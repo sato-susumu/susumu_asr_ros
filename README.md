@@ -1,6 +1,4 @@
 # susumu_asr_ros
-現在、このリポジトリは主に生成AIで作成しています。そのため、動作しないケースもあると思います。
-
 ROS 2 向けの音声認識パッケージです。
 VAD (音声区間検出)、ウェイクワード検出、ASR (音声認識) を組み合わせて、ROS2上で動作させることを目的としています。
 
@@ -14,7 +12,6 @@ VAD (音声区間検出)、ウェイクワード検出、ASR (音声認識) を�
   - [OpenWakeWord](https://github.com/dsoto/openwakeword)  
 - **ASR (Automatic Speech Recognition)**  
   - [Google Cloud Speech-to-Text](https://cloud.google.com/speech-to-text)  
-  - [Vosk](https://alphacephei.com/vosk/)  
   - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 
 ---
@@ -32,23 +29,11 @@ git clone https://github.com/sato-susumu/susumu_asr_ros.git
 
 ### 2. 依存パッケージのインストール
 
-`susumu_asr_ros` は下記の Python パッケージを利用します:
-
-- `pyaudio`
-- `torch`
-- `torchaudio`
-- `vosk`
-- `google-cloud-speech`
-- `openwakeword`
-- `click`
-- `tflite_runtime==2.14.0`
-- `faster-whisper`
-
-これらを手動でインストールする場合は:
+手動でインストールする場合:
 
 ```bash
 # 例: Python仮想環境下で
-pip install pyaudio torch torchaudio vosk google-cloud-speech openwakeword click "numpy<2.0"  tflite_runtime==2.14.0 faster-whisper
+pip install pyaudio torch torchaudio google-cloud-speech openwakeword click "numpy<2.0" tflite_runtime==2.14.0 faster-whisper
 ```
 
 ### 3. ビルド
@@ -93,12 +78,11 @@ ros2 run susumu_asr_ros susumu_asr_node
 |------------------------|---------|----------------------|--------------------------------------------|
 | `list_mic_devices`     | bool    | `False`             | `True` にすると起動時にマイクデバイス一覧を表示                |
 | `vad_type`             | string  | `"openwakeword"`     | `silero_vad` or `openwakeword`             |
-| `asr_type`             | string  | `"google_cloud"`     | `google_cloud` or `vosk` or `whisper`      |
+| `asr_type`             | string  | `"google_cloud"`     | `google_cloud` or `whisper`      |
 | `language_code`        | string  | `"ja-JP"`           | Google Cloud Speech-to-Text の言語コード         |
-| `vosk_model_name`      | string  | `"vosk-model-ja-0.22"` | Vosk で使用するモデル名                             |
 | `oww_model_folder`     | string  | `"models"`          | OpenWakeWord のモデルを配置するフォルダ                 |
 | `oww_model_name`       | string  | `"hey_mycroft_v0.1.tflite"` | OpenWakeWord のモデルファイル名                     |
-| `input_device_index`   | int     | `None`              | マイク入力のデバイスインデックス (未指定ならデフォルトマイク)           |
+| `input_device_index`   | int     | `None`              | マイク入力のデバイスインデックス (未指定の場合、デフォルトマイク)           |
 | `input_file`           | string  | `None`              | WAV ファイルのパスを指定するとファイル入力に切り替わる              |
 | `simulate_realtime`    | bool    | `False`             | WAV ファイル入力時にフレーム単位で遅延を挿入し、リアルタイムっぽく動かす     |
 | `debug`                | bool    | `False`             | `True` にするとデバッグモードでの全音声 WAV 出力 & ラベル出力を有効化 |
@@ -111,7 +95,7 @@ ros2 run susumu_asr_ros susumu_asr_node
 ros2 run susumu_asr_ros susumu_asr_node \
   --ros-args \
     -p vad_type:=silero_vad \
-    -p asr_type:=vosk
+    -p asr_type:=google_cloud
 ```
 
 WAVファイルから入力し、リアルタイムシミュレーションを ON にする:
@@ -122,21 +106,3 @@ ros2 run susumu_asr_ros susumu_asr_node \
     -p input_file:="path/to/sample.wav" \
     -p simulate_realtime:=True
 ```
-
----
-
-## テスト
-
-ROS 2 の標準的なテスト機構 ([ament_lint](https://github.com/ament/ament_lint/) 系) を導入しています。  
-以下のコマンドでチェックが実行されます。
-
-```bash
-colcon test
-colcon test-result
-```
-
-- `test_flake8.py`  : コードスタイル (PEP8) チェック  
-- `test_pep257.py`  : Docstring チェック  
-- `test_copyright.py`: ライセンスヘッダーチェック  
-
----
