@@ -89,7 +89,7 @@ ros2 run susumu_asr_ros susumu_asr_node
 
 ### パラメータ指定例
 
-たとえば、VADを Silero VAD、ASRをVoskにする場合:
+たとえば、VADを"Silero VAD"、ASRを"Google Cloud"にする場合:
 
 ```bash
 ros2 run susumu_asr_ros susumu_asr_node \

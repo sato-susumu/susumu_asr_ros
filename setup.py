@@ -22,7 +22,6 @@ setup(
         "pyaudio",
         "torch",
         "torchaudio",
-        "vosk",
         "google-cloud-speech",
         "openwakeword",
         "tflite_runtime==2.14.0",

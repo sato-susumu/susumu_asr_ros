@@ -2,6 +2,7 @@ import launch
 import launch_ros.actions
 
 from launch import LaunchService
+from susumu_asr_ros.susumu_asr import ASR_WHISPER, VAD_OPENWAKEWORD
 
 
 def generate_launch_description():
@@ -14,8 +15,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     {
-                        "vad_type": "openwakeword",
-                        "asr_type": "whisper",
+                        "vad_type": VAD_OPENWAKEWORD,
+                        "asr_type": ASR_WHISPER,
                         "debug": True,
                         "whisper_language_code": "ja",
                     }

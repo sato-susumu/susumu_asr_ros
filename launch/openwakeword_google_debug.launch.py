@@ -2,6 +2,7 @@ import launch
 import launch_ros.actions
 
 from launch import LaunchService
+from susumu_asr_ros.susumu_asr import VAD_OPENWAKEWORD, ASR_GOOGLE_CLOUD
 
 
 def generate_launch_description():
@@ -14,8 +15,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     {
-                        "vad_type": "openwakeword",
-                        "asr_type": "google_cloud",
+                        "vad_type": VAD_OPENWAKEWORD,
+                        "asr_type": ASR_GOOGLE_CLOUD,
                         "debug": True,
                     }
                 ],

@@ -17,17 +17,15 @@ import numpy as np
 import openwakeword
 import pyaudio
 import torch
-import vosk
 from google.cloud import speech
 from openwakeword.model import Model
 from faster_whisper import WhisperModel
 
-# VAD_WEBRTC = "webrtc"
 VAD_SILERO_VAD = "silero_vad"
 VAD_OPENWAKEWORD = "openwakeword"
 
 ASR_GOOGLE_CLOUD = "google_cloud"
-ASR_VOSK = "vosk"
+ASR_WHISPER = "whisper"
 
 
 class VADBase(ABC):
@@ -61,118 +59,6 @@ OPEN_WAKEWORD_SPEECH_TIMEOUT_SECONDS = 8.0
 FRAMES_PER_SECOND = int(1000 / FRAME_DURATION_MS)
 # SILENCE_SECONDS 秒分の無音フレームしきい値
 SILENCE_FRAMES_THRESHOLD = int(math.ceil(SILENCE_SECONDS * FRAMES_PER_SECOND))
-
-
-class VoskASR(ASRBase):
-    """
-    Vosk用ASR.
-
-    audio_queue から (command, data) を受け取って認識を行い、部分認識 or 最終認識結果を result_queue に返す.
-    """
-
-    def __init__(
-        self,
-        model_name: str,
-        audio_queue: queue.Queue,
-        result_queue: queue.Queue,
-        stop_event: threading.Event,
-    ):
-        self.model_name = model_name
-        self.audio_queue = audio_queue
-        self.result_queue = result_queue
-        self.stop_event = stop_event
-
-        print(f"[VoskASR] Voskモデルを読み込み: {model_name}")
-        self.model = vosk.Model(model_name=model_name)
-
-        self.rec = None  # KaldiRecognizer
-        self.call_active = False  # 発話セッション中かどうか
-
-        self._start_time = None
-        self._stop_time = None
-
-    def run(self):
-        """audio_queue からコマンドを取り出しながら Vosk で音声認識を行う."""
-        while not self.stop_event.is_set():
-            try:
-                command, data = self.audio_queue.get(timeout=0.1)
-            except queue.Empty:
-                continue
-
-            if command == "start":
-                self._handle_start(data)
-            elif command == "audio":
-                self._handle_audio(data)
-            elif command == "stop":
-                self._handle_stop(data)
-            elif command == "stop_all":
-                self._handle_stop_all()
-                return  # スレッド終了
-
-    def _handle_start(self, data: bytes):
-        self._start_time = float(data.decode())
-        self._stop_time = None
-        if not self.call_active:
-            print("[VoskASR] 音声認識セッション開始")
-            self.rec = vosk.KaldiRecognizer(self.model, SAMPLE_RATE)
-            self.call_active = True
-        else:
-            print("[VoskASR] 既にセッション中 → 'start'を無視")
-
-    def _handle_audio(self, data: bytes):
-        if self.call_active and self.rec:
-            finished = self.rec.AcceptWaveform(data)
-            if finished:
-                # Final結果が得られた
-                text = self._extract_text(self.rec.FinalResult(), is_final=True)
-                if text:
-                    self.result_queue.put(
-                        (True, text, self._start_time, self._stop_time)
-                    )
-            else:
-                # Partial結果
-                partial = self._extract_text(self.rec.PartialResult(), is_final=False)
-                if partial:
-                    self.result_queue.put((False, partial, self._start_time, None))
-
-    def _handle_stop(self, data: bytes):
-        self._stop_time = float(data.decode())
-        if self.call_active and self.rec:
-            print("[VoskASR] 発話終了 → FinalResult取得")
-            final_result = self.rec.FinalResult()
-            text = self._extract_text(final_result, is_final=True)
-            if text:
-                self.result_queue.put((True, text, self._start_time, self._stop_time))
-            # セッション終了
-            self.call_active = False
-            self.rec = None
-
-    def _handle_stop_all(self):
-        print("[VoskASR] stop_all受信 → ワーカー終了")
-        # まだセッション中なら最終結果を取得
-        if self.call_active and self.rec:
-            final_result = self.rec.FinalResult()
-            text = self._extract_text(final_result, is_final=True)
-            if text:
-                self.result_queue.put((True, text, self._start_time, None))
-
-    def _extract_text(self, json_str: str, is_final: bool) -> str:
-        """
-        VoskのPartialResult/FinalResultで得られるJSON文字列からテキストを取り出す.
-
-        partial結果は { "partial": "..." }、final結果は { "text": "..." }.
-        """
-        if not json_str:
-            return ""
-        try:
-            data = json.loads(json_str)
-            if is_final:
-                return data.get("text", "")
-            else:
-                return data.get("partial", "")
-        except json.JSONDecodeError:
-            print(f"[VoskASR] JSONデコード失敗: {json_str}")
-            return ""
 
 
 class WhisperASR(ASRBase):
@@ -466,20 +352,16 @@ class SileroVadProcessor(VADBase):
     - 連続無音フレーム数などの判定は Silero 方式に任せるが、
       発話開始時は過去数フレーム(PRE_SPEECH_TIME_MS分)もまとめて返す.
     """
+    MODEL_NAME = "silero_vad"
+    REPO = "snakers4/silero-vad:v4.0"
 
     def __init__(self):
         print("[SileroVadProcessor] Torch Hubからモデルをロードします...")
-        # TODO: v4.0 に変更してるので、あとで修正？
         self.model, self.utils = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad:v4.0",
-            model="silero_vad",
+            repo_or_dir=self.REPO,
+            model=self.MODEL_NAME,
             force_reload=False,
         )
-        # self.model, self.utils = torch.hub.load(
-        #     repo_or_dir='snakers4/silero-vad',
-        #     model='silero_vad',
-        #     force_reload=False
-        # )
         (
             self.get_speech_timestamps,
             self.save_audio,
@@ -544,8 +426,8 @@ class OpenWakeWordProcessor(VADBase):
         print("[OpenWakeWordProcessor] Torch HubからSileroモデルをロードします...")
         # Sileroモデルのロード
         self.model, self.utils = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad:v4.0",
-            model="silero_vad",
+            repo_or_dir=SileroVadProcessor.REPO,
+            model=SileroVadProcessor.MODEL_NAME,
             force_reload=False,
         )
         (
@@ -838,7 +720,7 @@ class SpeechRecognitionSystem:
         on_asr_event=None,
     ):
         # vad_processor: VADモジュール (VAD_SILERO_VAD または VAD_OPENWAKEWORD)
-        # asr: ASRモジュール (ASR_GOOGLE_CLOUD または ASR_VOSK)
+        # asr: ASRモジュール (ASR_GOOGLE_CLOUD または ASR_WHISPER)
         # recorder: AudioRecorder モジュール
         # full_audio_writer: デバッグ用の全音声出力クラス
         # label_writer: デバッグ用のラベル出力クラス
@@ -1034,10 +916,10 @@ def list_microphone_devices():
 )
 @click.option(
     "--asr-type",
-    type=click.Choice([ASR_GOOGLE_CLOUD, ASR_VOSK], case_sensitive=False),
+    type=click.Choice([ASR_GOOGLE_CLOUD, ASR_WHISPER], case_sensitive=False),
     default=ASR_GOOGLE_CLOUD,
     show_default=True,
-    help='ASRのタイプを指定します。 "google_cloud" または "vosk"。',
+    help='ASRのタイプを指定します。 "google_cloud" または "whisper"。',
 )
 @click.option(
     "--input-device-index",
@@ -1068,13 +950,6 @@ def list_microphone_devices():
     help="OpenWakeWordのモデル名を指定します。",
 )
 @click.option(
-    "--vosk-model-name",
-    type=str,
-    default="vosk-model-ja-0.22",
-    show_default=True,
-    help="Voskのモデル名を指定します。",
-)
-@click.option(
     "--input-file",
     type=str,
     default=None,
@@ -1103,7 +978,6 @@ def main(
     language_code,
     oww_model_folder,
     oww_model_name,
-    vosk_model_name,
     input_file,
     simulate_realtime,
     debug,
@@ -1171,10 +1045,12 @@ def main(
             stop_event=threading.Event(),
             language_code=language_code,
         )
-    elif asr_type == ASR_VOSK:
-        print("Vosk を使用します。")
-        asr = VoskASR(
-            model_name=vosk_model_name,
+    elif asr_type == ASR_WHISPER:
+        print("faster-whisper を使用します。")
+        asr = WhisperASR(
+            model_name="large-v2",
+            whisper_language_code="ja",
+            whisper_device="auto",
             audio_queue=queue.Queue(),
             result_queue=queue.Queue(),
             stop_event=threading.Event(),

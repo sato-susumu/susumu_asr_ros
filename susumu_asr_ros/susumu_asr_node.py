@@ -11,7 +11,6 @@ from susumu_asr_ros.susumu_asr import (
     SpeechRecognitionSystem,
     SileroVadProcessor,
     OpenWakeWordProcessor,
-    VoskASR,
     GoogleCloudASR,
     MicAudioRecorder,
     WavAudioRecorder,
@@ -20,7 +19,7 @@ from susumu_asr_ros.susumu_asr import (
     DummyAudioWriter,
     DummyLabelWriter,
     list_microphone_devices,
-    WhisperASR,
+    WhisperASR, ASR_WHISPER, ASR_GOOGLE_CLOUD, VAD_SILERO_VAD, VAD_OPENWAKEWORD,
 )
 
 
@@ -47,8 +46,6 @@ class SusumuAsrNode(Node):
         self.declare_parameter("asr_type", "google_cloud")
         # Google Cloud の言語コードなどを指定
         self.declare_parameter("language_code", "ja-JP")
-        # Voskモデル名
-        self.declare_parameter("vosk_model_name", "vosk-model-ja-0.22")
         # OpenWakeWordモデルフォルダ＆モデル名
         self.declare_parameter("oww_model_folder", "models")
         self.declare_parameter("oww_model_name", "hey_mycroft_v0.1.tflite")
@@ -80,7 +77,6 @@ class SusumuAsrNode(Node):
         vad_type = self.get_parameter("vad_type").value
         asr_type = self.get_parameter("asr_type").value
         language_code = self.get_parameter("language_code").value
-        vosk_model_name = self.get_parameter("vosk_model_name").value
         oww_model_folder = self.get_parameter("oww_model_folder").value
         oww_model_name = self.get_parameter("oww_model_name").value
         input_device_index = self.get_parameter("input_device_index").value
@@ -151,10 +147,10 @@ class SusumuAsrNode(Node):
         # ============================
         # 6) VAD モジュールの生成
         # ============================
-        if vad_type == "silero_vad":
+        if vad_type == VAD_SILERO_VAD:
             self.get_logger().info("VAD: SileroVadProcessor を使用します。")
             self.vad_processor = SileroVadProcessor()
-        elif vad_type == "openwakeword":
+        elif vad_type == VAD_OPENWAKEWORD:
             self.get_logger().info("VAD: OpenWakeWordProcessor を使用します。")
 
             if not os.path.exists(oww_model_folder):
@@ -164,10 +160,7 @@ class SusumuAsrNode(Node):
                 model_folder=oww_model_folder, model_name=oww_model_name
             )
         else:
-            self.get_logger().warn(
-                f"未知のVADタイプ={vad_type} → silero_vad とみなします。"
-            )
-            self.vad_processor = SileroVadProcessor()
+            raise ValueError(f"未知のVADタイプ={vad_type}")
 
         # ============================
         # 7) ASR モジュールの生成
@@ -176,7 +169,7 @@ class SusumuAsrNode(Node):
         self.result_queue = queue.Queue()
         self.stop_event = threading.Event()
 
-        if asr_type == "google_cloud":
+        if asr_type == ASR_GOOGLE_CLOUD:
             self.get_logger().info("ASR: GoogleCloudASR を使用します。")
             self.asr = GoogleCloudASR(
                 audio_queue=self.audio_queue,
@@ -184,15 +177,7 @@ class SusumuAsrNode(Node):
                 stop_event=self.stop_event,
                 language_code=language_code,
             )
-        elif asr_type == "vosk":
-            self.get_logger().info("ASR: VoskASR を使用します。")
-            self.asr = VoskASR(
-                model_name=vosk_model_name,
-                audio_queue=self.audio_queue,
-                result_queue=self.result_queue,
-                stop_event=self.stop_event,
-            )
-        elif asr_type == "whisper":
+        elif asr_type == ASR_WHISPER:
             self.get_logger().info("ASR: WhisperASR (faster-whisper) を使用します。")
             self.asr = WhisperASR(
                 model_name=whisper_model_name,
@@ -203,13 +188,7 @@ class SusumuAsrNode(Node):
                 stop_event=self.stop_event,
             )
         else:
-            self.get_logger().warn(f"未知のASRタイプ={asr_type} → vosk とみなします。")
-            self.asr = VoskASR(
-                model_name=vosk_model_name,
-                audio_queue=self.audio_queue,
-                result_queue=self.result_queue,
-                stop_event=self.stop_event,
-            )
+            raise ValueError(f"未知のASRタイプ={asr_type}")
 
         # ============================
         # 8) SpeechRecognitionSystem の生成
