@@ -384,7 +384,7 @@ class SileroVadProcessor(VADBase):
         # 以下のいずれかを返す:
         #   - ("speech_start", [過去分 + 今フレーム])
         #   - ("speech_cont", [今フレーム])
-        #   - ("speech_stop", [])
+        #   - ("speech_stop", [今フレーム])
         #   - (None, [])
         self.pre_speech_buffer.append(frame)
 
@@ -402,7 +402,7 @@ class SileroVadProcessor(VADBase):
         elif result_dic and "end" in result_dic:
             # 発話終了
             self.in_speech = False
-            return "speech_stop", []
+            return "speech_stop", [frame]
         else:
             if self.in_speech:
                 # 発話継続
@@ -465,7 +465,7 @@ class OpenWakeWordProcessor(VADBase):
         # 戻り値:
         #   - ("speech_start", [過去分 + 今フレーム])
         #   - ("speech_cont", [今フレーム])
-        #   - ("speech_stop", [])
+        #   - ("speech_stop", [今フレーム])
         #   - (None, [])
         self.total_frame_count += 1
 
@@ -506,7 +506,7 @@ class OpenWakeWordProcessor(VADBase):
                 and elapsed_sec > OPEN_WAKEWORD_SPEECH_END_MIN_DURATION
             ) or (elapsed_sec >= OPEN_WAKEWORD_SPEECH_TIMEOUT_SECONDS):
                 self.in_speech = False
-                return "speech_stop", []
+                return "speech_stop", [frame]
             else:
                 return "speech_cont", [frame]
 
@@ -811,7 +811,9 @@ class SpeechRecognitionSystem:
                     for f in frames_to_send:
                         self.audio_queue.put(("audio", f))
                 elif event == "speech_stop":
-                    print("VAD終話検出 → 'stop'")
+                    for f in frames_to_send:
+                        self.audio_queue.put(("audio", f))
+                    self.logger.info("VAD終話検出 → 'stop'")
                     self.audio_queue.put(("stop", str(self.current_time).encode()))
                     self.label_writer.write_segment(
                         self.vad_start, self.current_time, "speech"
