@@ -705,6 +705,50 @@ class LabelWriter(LabelWriterBase):
             f.write(f"{start:.2f}\t{end:.2f}\t{label}\n")
 
 
+class DummySpeechAudioWriter(AudioWriterBase):
+    """音声認識1回分の音声を出力しないダミークラス"""
+    def open(self) -> None:
+        pass
+
+    def write(self, data: bytes) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class SpeechAudioWriter(AudioWriterBase):
+    """音声認識1回分の音声を出力するクラス"""
+
+    def __init__(self, output_dir: str):
+        self.output_dir = output_dir
+        self.current_wav_handle = None
+        self.current_file_path = None
+        self.logger = get_logger('speech_audio_writer')
+        # 出力ディレクトリの作成
+        os.makedirs(self.output_dir, exist_ok=True)
+
+    def open(self) -> None:
+        # 新しいセッションの開始時に呼ばれる
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.current_file_path = os.path.join(self.output_dir, f"speech_{timestamp}.wav")
+        self.current_wav_handle = wave.open(self.current_file_path, "wb")
+        self.current_wav_handle.setnchannels(1)  # モノラル
+        self.current_wav_handle.setsampwidth(2)  # 16bit = 2 bytes
+        self.current_wav_handle.setframerate(SAMPLE_RATE)  # 16kHz
+        self.logger.info(f"音声認識セッションの音声出力開始: {self.current_file_path}")
+
+    def write(self, data: bytes) -> None:
+        if self.current_wav_handle:
+            self.current_wav_handle.writeframes(data)
+
+    def close(self) -> None:
+        if self.current_wav_handle:
+            self.current_wav_handle.close()
+            self.current_wav_handle = None
+            self.logger.info(f"音声認識セッションの音声出力終了: {self.current_file_path}")
+
+
 class SpeechRecognitionSystem:
     """
     システム全体の制御を行うクラス.
@@ -721,6 +765,7 @@ class SpeechRecognitionSystem:
         recorder: AudioRecorderBase,  # AudioRecorderモジュールを直接受け取る
         full_audio_writer: Optional[FullAudioWriter],
         label_writer: Optional[LabelWriter],
+        speech_audio_writer: Optional[SpeechAudioWriter],
         on_asr_event=None,
     ):
         # vad_processor: VADモジュール (VAD_SILERO_VAD または VAD_OPENWAKEWORD)
@@ -751,6 +796,7 @@ class SpeechRecognitionSystem:
 
         self.full_audio_writer = full_audio_writer
         self.label_writer = label_writer
+        self.speech_audio_writer = speech_audio_writer
 
         # コールバック登録
         self.on_asr_event = on_asr_event if on_asr_event else lambda d: None
@@ -793,8 +839,10 @@ class SpeechRecognitionSystem:
                 if event == "speech_start":
                     self.logger.info("VAD発話検出 → 'start'")
                     self.audio_queue.put(("start", str(self.current_time).encode()))
+                    self.speech_audio_writer.open()
                     for f in frames_to_send:
                         self.audio_queue.put(("audio", f))
+                        self.speech_audio_writer.write(f)
                     self.vad_start = self.current_time
 
                     # ウェイクワード検出時にコールバックを呼び出す
@@ -810,17 +858,22 @@ class SpeechRecognitionSystem:
                 elif event == "speech_cont":
                     for f in frames_to_send:
                         self.audio_queue.put(("audio", f))
+                        self.speech_audio_writer.write(f)
+
                 elif event == "speech_stop":
                     for f in frames_to_send:
                         self.audio_queue.put(("audio", f))
+                        self.speech_audio_writer.write(f)
                     self.logger.info("VAD終話検出 → 'stop'")
                     self.audio_queue.put(("stop", str(self.current_time).encode()))
+                    self.speech_audio_writer.close()
                     self.label_writer.write_segment(
                         self.vad_start, self.current_time, "speech"
                     )
                 elif event == "speech_timeout":
                     self.logger.info("VADタイムアウト検出 → 'stop'")
                     self.audio_queue.put(("stop", str(self.current_time).encode()))
+                    self.speech_audio_writer.close()
                     event_dict = {
                         "event_type": "timeout",
                         "start": self.vad_start,
@@ -855,6 +908,7 @@ class SpeechRecognitionSystem:
             self.asr_thread.join()
 
             self.full_audio_writer.close()
+            self.speech_audio_writer.close()
 
             self.logger.info("プログラム終了")
 
@@ -1010,11 +1064,15 @@ def main(
         # デバッグ用コンポーネントの初期化
         full_audio_writer = FullAudioWriter(full_audio_path)
         full_audio_writer.open()
+
+        speech_audio_writer = SpeechAudioWriter(output_dir="output")
+
         label_writer = LabelWriter(label_text_path)
         print(f"デバッグモード: 全音声の出力開始: path={full_audio_path}")
         print(f"デバッグモード: ラベルの出力開始: path={label_text_path}")
     else:
         full_audio_writer = DummyAudioWriter()
+        speech_audio_writer = DummySpeechAudioWriter()
         label_writer = DummyLabelWriter()
 
     # AudioRecorderの生成
@@ -1073,6 +1131,7 @@ def main(
         recorder=recorder,  # 生成済みのAudioRecorderモジュールを渡す
         full_audio_writer=full_audio_writer,
         label_writer=label_writer,
+        speech_audio_writer=speech_audio_writer,
         on_asr_event=lambda d: publish_asr_event(d),
         # ここでコールバックを設定
     )

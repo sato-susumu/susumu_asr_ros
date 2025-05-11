@@ -19,7 +19,8 @@ from susumu_asr_ros.susumu_asr import (
     DummyAudioWriter,
     DummyLabelWriter,
     list_microphone_devices,
-    WhisperASR, ASR_WHISPER, ASR_GOOGLE_CLOUD, VAD_SILERO_VAD, VAD_OPENWAKEWORD,
+    WhisperASR, ASR_WHISPER, ASR_GOOGLE_CLOUD, VAD_SILERO_VAD, VAD_OPENWAKEWORD, SpeechAudioWriter,
+    DummySpeechAudioWriter,
 )
 
 
@@ -119,6 +120,7 @@ class SusumuAsrNode(Node):
 
             self.full_audio_writer = FullAudioWriter(full_audio_path)
             self.full_audio_writer.open()
+            self.speech_audio_writer = SpeechAudioWriter(output_dir="output")
 
             self.label_writer = LabelWriter(label_text_path)
 
@@ -127,6 +129,7 @@ class SusumuAsrNode(Node):
             )
         else:
             self.full_audio_writer = DummyAudioWriter()
+            self.speech_audio_writer = DummySpeechAudioWriter()
             self.label_writer = DummyLabelWriter()
 
         # ============================
@@ -202,6 +205,7 @@ class SusumuAsrNode(Node):
             recorder=self.recorder,
             full_audio_writer=self.full_audio_writer,
             label_writer=self.label_writer,
+            speech_audio_writer=self.speech_audio_writer,
             # ===================================
             # (B) イベントを受け取るコールバックを登録
             # ===================================
