@@ -88,7 +88,7 @@ class WhisperASR(ASRBase):
         self.model = WhisperModel(
             model_name,
             device=self.whisper_device,
-            compute_type="float16",
+            compute_type="auto",
         )
 
         print(
