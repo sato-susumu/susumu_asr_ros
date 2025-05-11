@@ -31,7 +31,10 @@ class SusumuAsrNode(Node):
         # (A) Publisher は1つ。トピック名を "stt_event" にする
         # ===================================
         self.pub_stt_event = self.create_publisher(
-            String, "stt_event", 10  # 単一のトピック
+            String, 'stt_event', 10  # JSON イベント用
+        )
+        self.pub_from_human = self.create_publisher(
+            String, 'from_human', 10  # 確定結果文字列用
         )
 
         # ============================
@@ -212,12 +215,21 @@ class SusumuAsrNode(Node):
         self.get_logger().info("SusumuAsrNode: 初期化完了")
 
     def on_asr_event(self, event_dict: dict):
-        """音声認識システムからのイベントを受け取り、JSON 文字列にして単一トピック (stt_event) へパブリッシュする."""
+        """音声認識システムからのイベントを受け取り、JSON と文字列結果をそれぞれ配信する"""
         import json
 
+        # JSON イベントを配信
         msg = String()
         msg.data = json.dumps(event_dict, ensure_ascii=False)
         self.pub_stt_event.publish(msg)
+
+        # 確定した場合のみ、最終結果の文字列を配信
+        if event_dict.get('event_type') == 'final_result':
+            text = event_dict.get('text', '')
+            if text:
+                msg2 = String()
+                msg2.data = text
+                self.pub_from_human.publish(msg2)
 
     def destroy_node(self):
         # ノード破棄時に、システム側の終了処理を進めたい場合はここで何かしてもOK
