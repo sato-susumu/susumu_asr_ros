@@ -20,6 +20,7 @@ import torch
 from google.cloud import speech
 from openwakeword.model import Model
 from faster_whisper import WhisperModel
+from rclpy.logging import get_logger
 
 VAD_SILERO_VAD = "silero_vad"
 VAD_OPENWAKEWORD = "openwakeword"
@@ -79,6 +80,7 @@ class WhisperASR(ASRBase):
         self.audio_queue = audio_queue
         self.result_queue = result_queue
         self.stop_event = stop_event
+        self.logger = get_logger('whisper_asr')
 
         # デバイス自動判別 ("auto") → CUDA が使えるなら "cuda"、そうでなければ "cpu"
         if self.whisper_device == "auto":
@@ -91,9 +93,7 @@ class WhisperASR(ASRBase):
             compute_type="auto",
         )
 
-        print(
-            f"[WhisperASR] model={model_name}, device={self.whisper_device}"
-        )
+        self.logger.info(f"model={model_name}, device={self.whisper_device}")
 
         self.call_active = False
         self.audio_buffer = bytearray()  # 発話中に貯める PCM バッファ
@@ -122,7 +122,7 @@ class WhisperASR(ASRBase):
         self._stop_time = None
         self.audio_buffer.clear()
         self.call_active = True
-        print("[WhisperASR] 音声認識セッション開始")
+        self.logger.info("音声認識セッション開始")
 
     def _handle_audio(self, data: bytes):
         if self.call_active:
@@ -131,7 +131,7 @@ class WhisperASR(ASRBase):
     def _handle_stop(self, data: bytes):
         self._stop_time = float(data.decode())
         if self.call_active:
-            print("[WhisperASR] 発話終了 → まとめてデコードを実行")
+            self.logger.info("発話終了 → まとめてデコードを実行")
             text = self._run_inference(self.audio_buffer)
             if text:
                 self.result_queue.put((True, text, self._start_time, self._stop_time))
@@ -139,7 +139,7 @@ class WhisperASR(ASRBase):
             self.audio_buffer.clear()
 
     def _handle_stop_all(self):
-        print("[WhisperASR] stop_all受信 → ワーカー終了")
+        self.logger.info("stop_all受信 → ワーカー終了")
         if self.call_active and len(self.audio_buffer) > 0:
             text = self._run_inference(self.audio_buffer)
             if text:
@@ -188,6 +188,7 @@ class GoogleCloudASR(ASRBase):
         self.result_queue = result_queue
         self.stop_event = stop_event
         self.language_code = language_code
+        self.logger = get_logger('google_cloud_asr')
 
         self.client = speech.SpeechClient()
 
@@ -198,9 +199,7 @@ class GoogleCloudASR(ASRBase):
         self._stop_time = None
 
     def run(self):
-        print(
-            "[GoogleCloudASR] スレッド起動: Streaming Speech API (single_utterance=True)"
-        )
+        self.logger.info("スレッド起動: Streaming Speech API (single_utterance=True)")
         while not self.stop_event.is_set():
             try:
                 command, data = self.audio_queue.get(timeout=0.1)
@@ -222,7 +221,7 @@ class GoogleCloudASR(ASRBase):
         self._stop_time = None
 
         if not self.call_active:
-            print("[GoogleCloudASR] ストリーミング認識 開始")
+            self.logger.info("ストリーミング認識 開始")
             self.call_active = True
             # 音声チャンクを受け取る queue を空に
             while not self._audio_buffer_queue.empty():
@@ -234,7 +233,7 @@ class GoogleCloudASR(ASRBase):
             )
             self._response_thread.start()
         else:
-            print("[GoogleCloudASR] 既にストリーミング中 → 'start' を無視")
+            self.logger.info("既にストリーミング中 → 'start' を無視")
 
     def _handle_audio(self, data: bytes):
         # ストリーミング中のみ、音声チャンクを queue に積む.
@@ -249,7 +248,7 @@ class GoogleCloudASR(ASRBase):
         # 一応、明示的に「もう終わり！」という場合にも対応できるように実装。
         self._stop_time = float(data.decode())
         if self.call_active:
-            print("[GoogleCloudASR] _handle_stop: 明示的にストリーミング終了を要求")
+            self.logger.info("_handle_stop: 明示的にストリーミング終了を要求")
             self.call_active = False
             # ストリームへの送信を止めるため、None などを入れてジェネレータを終了させる
             self._audio_buffer_queue.put(None)
@@ -259,10 +258,10 @@ class GoogleCloudASR(ASRBase):
                 self._response_thread.join()
                 self._response_thread = None
         else:
-            print("[GoogleCloudASR] ストリーミング中ではない → 'stop' を無視")
+            self.logger.info("ストリーミング中ではない → 'stop' を無視")
 
     def _handle_stop_all(self):
-        print("[GoogleCloudASR] stop_all受信 → スレッド終了処理")
+        self.logger.info("stop_all受信 → スレッド終了処理")
         # まだストリーミング中なら終了
         if self.call_active:
             self._handle_stop(b"0.0")
@@ -319,10 +318,10 @@ class GoogleCloudASR(ASRBase):
 
             # for ループが自然に抜けたらストリーム終了 or エラー
         except Exception as e:
-            print("[GoogleCloudASR] ストリーミング認識中に例外:", e)
+            self.logger.error(f"ストリーミング認識中に例外: {e}")
         finally:
             self.call_active = False
-            print("[GoogleCloudASR] ストリーミング終了")
+            self.logger.info("ストリーミング終了")
 
     def _request_stream(self):
         """
@@ -356,7 +355,8 @@ class SileroVadProcessor(VADBase):
     REPO = "snakers4/silero-vad:v4.0"
 
     def __init__(self):
-        print("[SileroVadProcessor] Torch Hubからモデルをロードします...")
+        self.logger = get_logger('silero_vad')
+        self.logger.info("Torch Hubからモデルをロードします...")
         self.model, self.utils = torch.hub.load(
             repo_or_dir=self.REPO,
             model=self.MODEL_NAME,
@@ -423,7 +423,8 @@ class OpenWakeWordProcessor(VADBase):
     """
 
     def __init__(self, model_folder: str, model_name: str):
-        print("[OpenWakeWordProcessor] Torch HubからSileroモデルをロードします...")
+        self.logger = get_logger('open_wake_word')
+        self.logger.info("Torch HubからSileroモデルをロードします...")
         # Sileroモデルのロード
         self.model, self.utils = torch.hub.load(
             repo_or_dir=SileroVadProcessor.REPO,
@@ -441,7 +442,7 @@ class OpenWakeWordProcessor(VADBase):
         # Silero VAD (終了検出にのみ使う)
         self.vad_it = self.VADIterator(self.model, threshold=SILERO_VAD_THRESHOLD)
 
-        print("[OpenWakeWordProcessor] OpenWakeWordのモデルをロードします...")
+        self.logger.info("OpenWakeWordのモデルをロードします...")
         # OpenWakeWord のモデル (ダウンロード(動作に必要な基本的なモデル用)
         openwakeword.utils.download_models()
         # OpenWakeWord のモデル ( 使用するウェイクワード用モデルを指定するために、上記とは別にモデルをダウンロード
@@ -538,6 +539,7 @@ class MicAudioRecorder(AudioRecorderBase):
         self.stream = None
         self.read_frame_size = read_frame_size
         self.input_device_index = input_device_index
+        self.logger = get_logger('mic_audio_recorder')
 
     def get_device_info(self) -> dict:
         """デバイス情報を取得して返す."""
@@ -559,7 +561,8 @@ class MicAudioRecorder(AudioRecorderBase):
             stream_callback=None,
         )
         self.stream.start_stream()
-        print("[MicAudioRecorder] マイク入力開始")
+        self.logger.info(f"input_device_index: {self.input_device_index}")
+        self.logger.info("マイク入力開始")
 
     def read_frame(self) -> bytes:
         if self.stream is not None:
@@ -572,7 +575,7 @@ class MicAudioRecorder(AudioRecorderBase):
             self.stream.stop_stream()
             self.stream.close()
         self.pa.terminate()
-        print("[MicAudioRecorder] マイク入力終了")
+        self.logger.info("マイク入力終了")
 
 
 class WavAudioRecorder(AudioRecorderBase):
@@ -585,6 +588,7 @@ class WavAudioRecorder(AudioRecorderBase):
         self.input_file = input_file
         self.simulate_realtime = simulate_realtime
         self.wav_handle = None
+        self.logger = get_logger('wav_audio_recorder')
 
     def get_device_info(self) -> dict:
         # デバイス情報はマイクと異なるため、空の辞書を返す。
@@ -607,7 +611,7 @@ class WavAudioRecorder(AudioRecorderBase):
             raise ValueError(
                 f"WAVファイルのサンプリングレートが {SAMPLE_RATE} Hz ではありません。"
             )
-        print(f"[WavAudioRecorder] WAVファイル入力開始: {self.input_file}")
+        self.logger.info(f"WAVファイル入力開始: {self.input_file}")
 
     def read_frame(self) -> bytes:
         if self.wav_handle is None:
@@ -625,7 +629,7 @@ class WavAudioRecorder(AudioRecorderBase):
     def close(self):
         if self.wav_handle is not None:
             self.wav_handle.close()
-        print("[WavAudioRecorder] WAVファイル入力終了")
+        self.logger.info("WAVファイル入力終了")
 
 
 class AudioWriterBase(ABC):
@@ -756,17 +760,19 @@ class SpeechRecognitionSystem:
         self.current_time: float = 0
         self.vad_start: float = 0
 
+        self.logger = get_logger('speech_recognition_system')
+
     def _signal_handler(self, sig, frame):
-        print("捕捉: Ctrl+C で停止要求")
+        self.logger.info("捕捉: Ctrl+C で停止要求")
         self.stop_event.set()
         sys.exit(0)
 
     def start(self):
-        print("システム起動。Ctrl+Cで終了")
+        self.logger.info("システム起動。Ctrl+Cで終了")
         device_info = self.recorder.get_device_info()
         for idx, info in device_info.items():
             if info["maxInputChannels"] > 0:
-                print(f"マイクデバイス {idx}: {info['name']}")
+                self.logger.info(f"マイクデバイス {idx}: {info['name']}")
 
         self.asr_thread.start()
         self.recorder.open()
@@ -785,7 +791,7 @@ class SpeechRecognitionSystem:
 
                 # イベントに応じてワーカーへコマンド送信
                 if event == "speech_start":
-                    print("VAD発話検出 → 'start'")
+                    self.logger.info("VAD発話検出 → 'start'")
                     self.audio_queue.put(("start", str(self.current_time).encode()))
                     for f in frames_to_send:
                         self.audio_queue.put(("audio", f))
@@ -811,7 +817,7 @@ class SpeechRecognitionSystem:
                         self.vad_start, self.current_time, "speech"
                     )
                 elif event == "speech_timeout":
-                    print("VADタイムアウト検出 → 'stop'")
+                    self.logger.info("VADタイムアウト検出 → 'stop'")
                     self.audio_queue.put(("stop", str(self.current_time).encode()))
                     event_dict = {
                         "event_type": "timeout",
@@ -836,10 +842,10 @@ class SpeechRecognitionSystem:
         except KeyboardInterrupt:
             pass
         except Exception as e:
-            print("エラー:", e)
+            self.logger.error(f"エラー: {e}")
             raise
         finally:
-            print("終了処理。stop_allをワーカーへ送信")
+            self.logger.info("終了処理。stop_allをワーカーへ送信")
             self.audio_queue.put(("stop_all", None))
             self.stop_event.set()
 
@@ -848,7 +854,7 @@ class SpeechRecognitionSystem:
 
             self.full_audio_writer.close()
 
-            print("プログラム終了")
+            self.logger.info("プログラム終了")
 
     def _update_current_time(self, frame: bytes) -> None:
         self.processed_size += len(frame)
@@ -865,7 +871,7 @@ class SpeechRecognitionSystem:
                 break
             if text:
                 if is_final:
-                    print(f"[Final] {text}")
+                    self.logger.info(f"[Final] {text}")
                     event_dict = {
                         "event_type": "final_result",
                         "start": start,
@@ -876,7 +882,7 @@ class SpeechRecognitionSystem:
                     if end is not None:
                         self.label_writer.write_segment(start, end, text)
                 else:
-                    print(f"[Partial] {text}")
+                    self.logger.info(f"[Partial] {text}")
                     event_dict = {
                         "event_type": "partial_result",
                         "start": start,
