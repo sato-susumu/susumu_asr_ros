@@ -120,7 +120,7 @@ class SusumuAsrNode(Node):
 
             self.full_audio_writer = FullAudioWriter(full_audio_path)
             self.full_audio_writer.open()
-            self.speech_audio_writer = SpeechAudioWriter(output_dir="output")
+            self.speech_audio_writer = SpeechAudioWriter(output_dir="debug")
 
             self.label_writer = LabelWriter(label_text_path)
 

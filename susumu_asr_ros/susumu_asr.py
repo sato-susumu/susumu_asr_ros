@@ -1065,7 +1065,7 @@ def main(
         full_audio_writer = FullAudioWriter(full_audio_path)
         full_audio_writer.open()
 
-        speech_audio_writer = SpeechAudioWriter(output_dir="output")
+        speech_audio_writer = SpeechAudioWriter(output_dir="debug")
 
         label_writer = LabelWriter(label_text_path)
         print(f"デバッグモード: 全音声の出力開始: path={full_audio_path}")
