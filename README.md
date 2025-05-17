@@ -48,17 +48,29 @@ source install/setup.bash
 
 ## 実行方法
 
-### ランチファイルから起動
+### ランチファイルから起動 ウェイクワード認識＋google音声認識
 
 ```bash
-ros2 launch susumu_asr_ros openwakeword_google_debug.launch.py
+ros2 launch susumu_asr_ros openwakeword_google.launch.py
 ```
 
-標準設定では下記が実行されます。
+### ランチファイルから起動 ウェイクワード認識＋whisper音声認識
 
-- VAD: OpenWakeWord
-- ASR: Google Cloud Speech-to-Text
-- マイク入力で音声を取得
+```bash
+ros2 launch susumu_asr_ros openwakeword_whisper.launch.py
+```
+
+### ランチファイルから起動 SileroVAD＋google音声認識
+
+```bash
+ros2 launch susumu_asr_ros silerovad_google.launch.py
+```
+
+### ランチファイルから起動 SileroVAD＋whisper音声認識
+
+```bash
+ros2 launch susumu_asr_ros silerovad_whisper.launch.py
+```
 
 ### ノード単体で起動
 

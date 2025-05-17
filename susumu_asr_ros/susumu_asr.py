@@ -49,6 +49,8 @@ FRAME_DURATION_MS = 30  # 1フレームあたりの音声長さ(ms)
 SILENCE_SECONDS = 1.0  # 発話終了とみなす無音秒数
 PRE_SPEECH_TIME_MS = 300  # 発話開始検知時に遡って送るバッファ時間(ms)
 SILERO_VAD_THRESHOLD = 0.5  # Silero VAD のしきい値(0.0-1.0)
+SILERO_VAD_SILENCE_THRESHOLD_MS = 1000  # SileroVadProcessor用の発話終了とみなす無音時間(ms)
+OPENWAKEWORD_SILENCE_THRESHOLD_MS = 2000  # OpenWakeWordProcessor用の発話終了とみなす無音時間(ms)
 
 OPEN_WAKEWORD_THRESHOLD = 0.5
 # WakeWord 検出後に認める発話開始からの最小時間(秒)
@@ -343,20 +345,19 @@ class GoogleCloudASR(ASRBase):
             yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
 
-class SileroVadProcessor(VADBase):
+class SilenceAwareVADIterator:
     """
-    Silero VAD を用いた発話検知を行うクラス.
-
-    - フレーム単位の音声を受け取り、(model, VADIterator)で判定.
-    - 連続無音フレーム数などの判定は Silero 方式に任せるが、
-      発話開始時は過去数フレーム(PRE_SPEECH_TIME_MS分)もまとめて返す.
+    VADIteratorのラッパークラス.
+    発話終了判定を指定された無音継続時間に基づいて行う.
     """
     MODEL_NAME = "silero_vad"
     REPO = "snakers4/silero-vad:v4.0"
 
-    def __init__(self):
-        self.logger = get_logger('silero_vad')
+    def __init__(self, silence_threshold_ms=SILERO_VAD_SILENCE_THRESHOLD_MS, threshold=SILERO_VAD_THRESHOLD):
+        self.logger = get_logger('silence_aware_vad')
         self.logger.info("Torch Hubからモデルをロードします...")
+        
+        # SileroVADモデルのロード
         self.model, self.utils = torch.hub.load(
             repo_or_dir=self.REPO,
             model=self.MODEL_NAME,
@@ -370,8 +371,73 @@ class SileroVadProcessor(VADBase):
             self.collect_chunks,
         ) = self.utils
 
-        # VADIterator(Streaming) を初期化
-        self.vad_it = self.VADIterator(self.model, threshold=SILERO_VAD_THRESHOLD)
+        # 元のVADIteratorを初期化
+        self.vad_iterator = self.VADIterator(self.model, threshold=threshold)
+        
+        # 無音検出用の状態
+        self.silence_frame_count = 0
+        self.silence_threshold_frames = int(math.ceil(silence_threshold_ms / FRAME_DURATION_MS))
+        self.in_speech = False
+        self.last_result = None
+
+    def __call__(self, audio_float32, return_seconds=False):
+        # 元のVADIteratorで判定
+        result = self.vad_iterator(audio_float32, return_seconds=return_seconds)
+        self.last_result = result
+
+        if result and "start" in result:
+            # 発話開始
+            self.in_speech = True
+            self.silence_frame_count = 0
+            return result
+        elif result and "end" in result:
+            # 発話終了検知 → 無音カウント開始
+            if self.in_speech:
+                self.silence_frame_count = 1
+                self.in_speech = False
+                return None  # まだendは返さない
+            else:
+                # すでに無音中ならカウントアップ
+                self.silence_frame_count += 1
+                if self.silence_frame_count >= self.silence_threshold_frames:
+                    # 1秒間無音が続いたら発話終了
+                    self.silence_frame_count = 0
+                    return result
+                else:
+                    return None
+        else:
+            if self.in_speech:
+                # 発話継続
+                self.silence_frame_count = 0
+                return result
+            else:
+                # 無音中
+                if self.silence_frame_count > 0:
+                    self.silence_frame_count += 1
+                    if self.silence_frame_count >= self.silence_threshold_frames:
+                        self.silence_frame_count = 0
+                        return {"end": True}  # 1秒間無音が続いたら発話終了
+                    else:
+                        return None
+                else:
+                    return None
+
+
+class SileroVadProcessor(VADBase):
+    """
+    Silero VAD を用いた発話検知を行うクラス.
+
+    - フレーム単位の音声を受け取り、(model, VADIterator)で判定.
+    - 連続無音フレーム数などの判定は Silero 方式に任せるが、
+      発話開始時は過去数フレーム(PRE_SPEECH_TIME_MS分)もまとめて返す.
+    """
+
+    def __init__(self):
+        self.logger = get_logger('silero_vad')
+        self.logger.info("SilenceAwareVADIteratorを初期化します...")
+        
+        # SilenceAwareVADIteratorを初期化
+        self.vad_it = SilenceAwareVADIterator()
 
         # フレーム関連
         self.samples_per_frame = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
@@ -424,23 +490,9 @@ class OpenWakeWordProcessor(VADBase):
 
     def __init__(self, model_folder: str, model_name: str):
         self.logger = get_logger('open_wake_word')
-        self.logger.info("Torch HubからSileroモデルをロードします...")
-        # Sileroモデルのロード
-        self.model, self.utils = torch.hub.load(
-            repo_or_dir=SileroVadProcessor.REPO,
-            model=SileroVadProcessor.MODEL_NAME,
-            force_reload=False,
-        )
-        (
-            self.get_speech_timestamps,
-            self.save_audio,
-            self.read_audio,
-            self.VADIterator,
-            self.collect_chunks,
-        ) = self.utils
-
+        
         # Silero VAD (終了検出にのみ使う)
-        self.vad_it = self.VADIterator(self.model, threshold=SILERO_VAD_THRESHOLD)
+        self.vad_it = SilenceAwareVADIterator(silence_threshold_ms=OPENWAKEWORD_SILENCE_THRESHOLD_MS, threshold=SILERO_VAD_THRESHOLD)
 
         self.logger.info("OpenWakeWordのモデルをロードします...")
         # OpenWakeWord のモデル (ダウンロード(動作に必要な基本的なモデル用)
