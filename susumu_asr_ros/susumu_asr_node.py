@@ -5,6 +5,7 @@ from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from std_msgs.msg import String
 
 from susumu_asr_ros.susumu_asr import (
@@ -34,8 +35,16 @@ class SusumuAsrNode(Node):
         self.pub_stt_event = self.create_publisher(
             String, 'stt_event', 10  # JSON イベント用
         )
+
+        # 音声認識の確定結果用
+        qos = QoSProfile(depth=10)
+        qos.reliability = ReliabilityPolicy.RELIABLE
+        qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+
         self.pub_from_human = self.create_publisher(
-            String, 'from_human', 10  # 確定結果文字列用
+            String,
+            'from_human',
+            qos
         )
 
         # ============================
