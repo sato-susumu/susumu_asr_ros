@@ -1,6 +1,5 @@
 # susumu_asr_ros
-作りかけのROS 2 向けの音声認識パッケージです。永遠に作りかけ？
-VAD (音声区間検出)、ウェイクワード検出、ASR (音声認識) を組み合わせて、ROS2上で動作させることを目的としています。
+VAD (音声区間検出)、ウェイクワード検出、ASR (音声認識) を組み合わせて、ROS2上で動作させるパッケージです。
 
 ---
 
@@ -46,27 +45,27 @@ source install/setup.bash
 
 ---
 
-## 実行方法
+## launchファイルから起動
 
-### ランチファイルから起動 ウェイクワード認識＋google音声認識
+### ウェイクワード認識＋google音声認識
 
 ```bash
 ros2 launch susumu_asr_ros openwakeword_google.launch.py
 ```
 
-### ランチファイルから起動 ウェイクワード認識＋whisper音声認識
+### ウェイクワード認識＋whisper音声認識
 
 ```bash
 ros2 launch susumu_asr_ros openwakeword_whisper.launch.py
 ```
 
-### ランチファイルから起動 SileroVAD＋google音声認識
+### SileroVAD＋google音声認識
 
 ```bash
 ros2 launch susumu_asr_ros silerovad_google.launch.py
 ```
 
-### ランチファイルから起動 SileroVAD＋whisper音声認識
+### SileroVAD＋whisper音声認識
 
 ```bash
 ros2 launch susumu_asr_ros silerovad_whisper.launch.py
