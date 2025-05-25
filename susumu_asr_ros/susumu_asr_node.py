@@ -34,8 +34,8 @@ class SusumuAsrNode(Node):
         self.pub_stt_event = self.create_publisher(
             String, 'stt_event', 10  # JSON イベント用
         )
-        self.pub_from_human = self.create_publisher(
-            String, 'from_human', 10  # 確定結果文字列用
+        self.pub_stt = self.create_publisher(
+            String, 'stt', 10  # 確定結果文字列用
         )
 
         # ============================
@@ -233,7 +233,7 @@ class SusumuAsrNode(Node):
             if text:
                 msg2 = String()
                 msg2.data = text
-                self.pub_from_human.publish(msg2)
+                self.pub_stt.publish(msg2)
 
     def destroy_node(self):
         # ノード破棄時に、システム側の終了処理を進めたい場合はここで何かしてもOK
