@@ -1,5 +1,4 @@
 import collections
-import json
 import math
 import os
 import queue
@@ -105,7 +104,7 @@ class WhisperASR(ASRBase):
     def run(self):
         while not self.stop_event.is_set():
             try:
-                command, data = self.audio_queue.get(timeout=0.1)
+                command, data = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
@@ -204,7 +203,7 @@ class GoogleCloudASR(ASRBase):
         self.logger.info("スレッド起動: Streaming Speech API (single_utterance=True)")
         while not self.stop_event.is_set():
             try:
-                command, data = self.audio_queue.get(timeout=0.1)
+                command, data = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
@@ -353,10 +352,10 @@ class SilenceAwareVADIterator:
     MODEL_NAME = "silero_vad"
     REPO = "snakers4/silero-vad:v4.0"
 
-    def __init__(self, silence_threshold_ms=SILERO_VAD_SILENCE_THRESHOLD_MS, threshold=SILERO_VAD_THRESHOLD):
+    def __init__(self, silence_threshold_ms=SILERO_VAD_SILENCE_THRESHOLD_MS,
+                 threshold=SILERO_VAD_THRESHOLD):
         self.logger = get_logger('silence_aware_vad')
         self.logger.info("Torch Hubからモデルをロードします...")
-        
         # SileroVADモデルのロード
         self.model, self.utils = torch.hub.load(
             repo_or_dir=self.REPO,
@@ -373,7 +372,6 @@ class SilenceAwareVADIterator:
 
         # 元のVADIteratorを初期化
         self.vad_iterator = self.VADIterator(self.model, threshold=threshold)
-        
         # 無音検出用の状態
         self.silence_frame_count = 0
         self.silence_threshold_frames = int(math.ceil(silence_threshold_ms / FRAME_DURATION_MS))
@@ -435,7 +433,7 @@ class SileroVadProcessor(VADBase):
     def __init__(self):
         self.logger = get_logger('silero_vad')
         self.logger.info("SilenceAwareVADIteratorを初期化します...")
-        
+
         # SilenceAwareVADIteratorを初期化
         self.vad_it = SilenceAwareVADIterator()
 
@@ -454,10 +452,9 @@ class SileroVadProcessor(VADBase):
         #   - (None, [])
         self.pre_speech_buffer.append(frame)
 
+        # メモリ割り当てを最適化: copyを避ける
         data_np = np.frombuffer(frame, dtype=np.int16)
-        audio_float32 = (
-            torch.from_numpy(data_np.copy()).float() / 32768.0
-        )  # int16 -> float32
+        audio_float32 = torch.from_numpy(data_np).float() / 32768.0
 
         result_dic = self.vad_it(audio_float32, return_seconds=False)
 
@@ -490,9 +487,12 @@ class OpenWakeWordProcessor(VADBase):
 
     def __init__(self, model_folder: str, model_name: str):
         self.logger = get_logger('open_wake_word')
-        
+
         # Silero VAD (終了検出にのみ使う)
-        self.vad_it = SilenceAwareVADIterator(silence_threshold_ms=OPENWAKEWORD_SILENCE_THRESHOLD_MS, threshold=SILERO_VAD_THRESHOLD)
+        self.vad_it = SilenceAwareVADIterator(
+            silence_threshold_ms=OPENWAKEWORD_SILENCE_THRESHOLD_MS,
+            threshold=SILERO_VAD_THRESHOLD
+        )
 
         self.logger.info("OpenWakeWordのモデルをロードします...")
         # OpenWakeWord のモデル (ダウンロード(動作に必要な基本的なモデル用)
@@ -943,8 +943,8 @@ class SpeechRecognitionSystem:
 
                 self._update_current_time(frame)
 
-                # CPU負荷を下げるために少し待つ (お好みで調整)
-                time.sleep(0.01)
+                # CPU負荷を下げるために少し待つ (30msフレーム間隔に合わせる)
+                time.sleep(0.03)
 
         except KeyboardInterrupt:
             pass
