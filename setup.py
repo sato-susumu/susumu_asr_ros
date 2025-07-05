@@ -26,6 +26,7 @@ setup(
         "openwakeword",
         "tflite_runtime==2.14.0",
         "faster-whisper",
+        "click",
     ],
     zip_safe=True,
     maintainer="Sato Susumu",
@@ -36,6 +37,9 @@ setup(
         "pytest<8.0.0"
     ],
     entry_points={
-        "console_scripts": ["susumu_asr_node = susumu_asr_ros.susumu_asr_node:main"],
+        "console_scripts": [
+            "susumu_asr_node = susumu_asr_ros.susumu_asr_node:main",
+            "susumu_asr_monitor = susumu_asr_ros.asr_monitor:main",
+        ],
     },
 )
