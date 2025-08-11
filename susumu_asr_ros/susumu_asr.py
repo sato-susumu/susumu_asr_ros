@@ -531,7 +531,7 @@ class OpenWakeWordProcessor(VADBase):
             oww_score = scores[-1] if len(scores) > 0 else 0.0
 
         # Silero VAD (終了判定に使う)
-        audio_float32 = torch.from_numpy(data_np.copy()).float() / 32768.0
+        audio_float32 = torch.from_numpy(data_np).float() / 32768.0
         silero_result = self.vad_it(audio_float32, return_seconds=False)
         silero_end_detected = (silero_result is not None) and ("end" in silero_result)
 
