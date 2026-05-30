@@ -2,221 +2,103 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Claude Code Context for susumu_asr_ros
-
 ## プロジェクト概要
-ROS2上で動作する音声認識パッケージで、長時間安定動作を実現するメモリ管理機能を持つ。
 
-### 主要コンポーネント
-- **VAD (音声区間検出)**: Silero VAD
-- **ウェイクワード検出**: OpenWakeWord  
-- **ASR (音声認識)**: Google Cloud Speech-to-Text または faster-whisper
-- **メモリ管理**: 自動メモリリーク防止機能
-- **モニタリング**: リアルタイムASRイベント・メモリ監視
+ROS2上で動作する音声認識パッケージ。VAD（音声区間検出）→ ウェイクワード検出 → ASR（音声認識）のパイプラインをマルチスレッドで実装し、長時間安定動作を目的とする。
 
-## アーキテクチャ
+## ビルドとテスト
 
-### クラス階層
-```
-VAD (抽象基底クラス)
-├── SileroVAD - PyTorchベースの高精度VAD
-└── OpenWakeWord - TFLiteベースのウェイクワード検出
-
-ASR (抽象基底クラス)
-├── GoogleCloudASR - ストリーミング音声認識
-└── WhisperASR - バッチ処理音声認識
-
-AudioIO (抽象基底クラス)
-├── MicInput - マイク入力（PyAudio）
-├── FileInput - WAVファイル入力
-└── FileOutput - デバッグ用WAV出力
-```
-
-### スレッドアーキテクチャ
-1. **メインスレッド**: ROS2ノード、全体制御
-2. **VADスレッド**: 音声区間検出、ウェイクワード検出
-3. **ASRスレッド**: 音声認識処理
-4. **モニタースレッド**: メモリプロファイリング（オプション）
-
-### キューベース通信
-- `audio_queue`: VAD → ASR への音声データ転送
-- `result_queue`: ASR → メイン への認識結果転送
-
-## ビルドコマンド
 ```bash
+# ビルド
 cd ~/ros2_ws
 colcon build --packages-select susumu_asr_ros
 source install/setup.bash
-```
 
-## テストコマンド
-```bash
-# 全テスト実行
+# テスト（全件）
 pytest test/
 
-# コードスタイルチェック（最重要）
+# コードスタイルチェック（コミット前に必ず実行）
 python -m pytest test/test_flake8.py -v
 
-# 個別テスト実行
-python -m pytest test/test_pep257.py  # docstringチェック
-python -m pytest test/test_copyright.py  # 著作権表記チェック
-python -m pytest test/test_asr.py  # 機能テスト
-
-# 特定のテストのみ実行
-python -m pytest test/test_asr.py::test_google_cloud_asr -v
+# 単一テスト実行
+python -m pytest test/test_asr.py::test_1 -v
 ```
 
-## 起動コマンド
+> `test_copyright.py` は `@pytest.mark.skip` で意図的にスキップされている。
 
-### 基本起動
-```bash
-# ウェイクワード + Google ASR
-ros2 launch susumu_asr_ros openwakeword_google.launch.py
+## アーキテクチャ
 
-# ウェイクワード + Whisper ASR  
-ros2 launch susumu_asr_ros openwakeword_whisper.launch.py
+### データフロー
 
-# Silero VAD + Google ASR
-ros2 launch susumu_asr_ros silerovad_google.launch.py
-
-# Silero VAD + Whisper ASR
-ros2 launch susumu_asr_ros silerovad_whisper.launch.py
+```
+AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → SusumuAsrNode
+(MicAudioRecorder / WavAudioRecorder)
 ```
 
-### モニタリング付き起動
-```bash
-# ASRノード + リアルタイムモニター
-ros2 launch susumu_asr_ros openwakeword_google_monitor.launch.py
-ros2 launch susumu_asr_ros silerovad_google_monitor.launch.py
-```
+### 主要クラス（`susumu_asr_ros/susumu_asr.py`）
 
-### ノード単体起動
-```bash
-# 基本起動
-ros2 run susumu_asr_ros susumu_asr_node
+| クラス | 役割 |
+|--------|------|
+| `VADBase` | VAD抽象基底クラス。`process_frame(bytes) -> (event, frames)` を定義 |
+| `SileroVadProcessor` | PyTorch + Silero VADで発話区間検出。`speech_start/speech_cont/speech_stop` を返す |
+| `OpenWakeWordProcessor` | OpenWakeWordでウェイクワード検出後、Silero VADで発話終了を検出 |
+| `ASRBase` | ASR抽象基底クラス。`run()` を定義 |
+| `GoogleCloudASR` | ストリーミング認識（`single_utterance=True`）。`_audio_buffer_queue` 経由で音声を受け取り別スレッドで応答処理 |
+| `WhisperASR` | バッチ認識。発話終了まで音声を `audio_buffer` に蓄積してまとめてデコード |
+| `SpeechRecognitionSystem` | メインループ。`on_asr_event` コールバックで認識結果をROS2ノードへ通知 |
 
-# パラメータ指定
-ros2 run susumu_asr_ros susumu_asr_node --ros-args \
-  -p vad_type:=silero_vad \
-  -p asr_type:=google_cloud \
-  -p enable_memory_profiling:=true
-```
+### スレッド構成
 
-## ASR監視ツール
+- **VADスレッド（メインスレッド内ループ）**: フレームを読み取り、VADに通す
+- **ASRスレッド（`asr.run()`）**: `audio_queue` からコマンド（`start/audio/stop/stop_all`）を受け取って認識処理
+- **Google ASR内部スレッド（`_streaming_recognize_loop`）**: ストリーミングAPIのレスポンスを非同期処理
 
-### 基本使用法
-```bash
-# リアルタイム監視
-ros2 run susumu_asr_ros susumu_asr_monitor
+### キュー通信プロトコル
 
-# メモリのみ監視
-ros2 run susumu_asr_ros susumu_asr_monitor --memory-only
+`audio_queue` に渡すメッセージ形式：`(command: str, data: bytes)`
+- `("start", timestamp_bytes)` — 発話開始
+- `("audio", pcm_bytes)` — 音声データ
+- `("stop", timestamp_bytes)` — 発話終了
+- `("stop_all", None)` — シャットダウン
 
-# 詳細イベント表示
-ros2 run susumu_asr_ros susumu_asr_monitor --show-details
+`result_queue` から返るメッセージ形式：`(is_final: bool, text: str, start: float, end: float)`
 
-# ワンタイム統計
-ros2 run susumu_asr_ros susumu_asr_monitor --once
-```
+### ROS2ノード（`susumu_asr_ros/susumu_asr_node.py`）
 
-### 監視内容
-- ウェイクワード検出回数
-- 音声認識成功率
-- 平均処理時間
-- メモリ使用量（現在/ピーク/成長率）
-- リアルタイムイベント履歴
+`SusumuAsrNode.__init__` でVAD・ASR・録音の各モジュールを組み立て、`system.start()` を別スレッドで起動する。認識イベントは `on_asr_event` コールバック経由で受け取り、以下のトピックに配信する。
 
-## 依存関係
-- pyaudio, torch, torchaudio
-- google-cloud-speech
-- openwakeword
-- tflite_runtime==2.14.0
-- faster-whisper
-- numpy>=1.26,<2
-- click (CLIツール用)
-- psutil (メモリ監視用)
+| トピック | 型 | 内容 |
+|----------|----|------|
+| `/stt_event` | `String` | JSON形式の全イベント（`wakeword_detected`, `partial_result`, `final_result`, `timeout`） |
+| `/stt` | `String` | `final_result` 時のテキストのみ |
 
-## 主要パラメータ
-- `vad_type`: "openwakeword" or "silero_vad"
-- `asr_type`: "google_cloud" or "whisper"
-- `language_code`: "ja-JP" (デフォルト)
-- `debug`: デバッグモード（WAV出力）
-- `input_file`: WAVファイル入力パス
-- `simulate_realtime`: リアルタイムシミュレーション
-- `enable_memory_profiling`: メモリプロファイリング有効化
+### モニタリングノード（`susumu_asr_ros/asr_monitor.py`）
 
-## ROS2トピック
+`/stt_event` をサブスクライブして統計（検出回数・成功率・平均処理時間）をターミナル表示する独立ノード。
 
-### パブリッシュ
-- `/stt_event` (String): JSONフォーマットのASRイベント
-- `/stt` (String): 確定した音声認識テキスト
+## 音声設定の定数
 
-### イベントタイプ
-```json
-// ウェイクワード検出
-{"type": "wakeword_detected", "timestamp": 1234567890.123}
+`susumu_asr.py` 内の定数を変える場合：
 
-// 部分認識結果
-{"type": "partial_result", "text": "こんにちは", "timestamp": 1234567890.456}
+- `SAMPLE_RATE = 16000` — WAVファイル入力時もこのレートを強制チェック
+- `FRAME_DURATION_MS = 30` — PyAudioのread_frame_sizeと連動
+- `SILERO_VAD_THRESHOLD = 0.5` — SileroVADの検出感度
+- `OPEN_WAKEWORD_SPEECH_TIMEOUT_SECONDS = 8.0` — ウェイクワード後の最大録音時間
 
-// 最終認識結果
-{"type": "final_result", "text": "こんにちは、今日はいい天気ですね", "timestamp": 1234567891.789}
+## デバッグモード
 
-// タイムアウト
-{"type": "timeout", "reason": "speech_timeout", "timestamp": 1234567892.012}
-```
+`debug=True` で起動すると `./debug/` ディレクトリに以下を出力：
+- `{timestamp}_audio_full.wav` — 全音声
+- `speech_{timestamp}.wav` — 認識セッション単位の音声
+- `{timestamp}_label.txt` — VADラベル（タブ区切り：start, end, label）
 
-## 開発時のヒント
+## OpenWakeWordモデル
 
-### マイクデバイス確認
-```bash
-ros2 run susumu_asr_ros susumu_asr_node --ros-args -p list_mic_devices:=true
-```
+`models/` ディレクトリに `.tflite` または `.onnx` 形式で配置。デフォルトは `hey_mycroft_v0.1.tflite`。利用可能モデル: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `timer`, `weather`。
 
-### デバッグモード
-```bash
-# 音声ファイルと認識結果を保存
-ros2 run susumu_asr_ros susumu_asr_node --ros-args -p debug:=true
-# 出力: debug_audio_*.wav, debug_labels_*.txt
-```
+## 環境変数
 
-### WAVファイルテスト
-```bash
-# リアルタイムシミュレーション
-ros2 run susumu_asr_ros susumu_asr_node --ros-args \
-  -p input_file:="/path/to/test.wav" \
-  -p simulate_realtime:=true
-```
-
-### メモリプロファイリング
-```bash
-# メモリ使用量の詳細追跡
-ros2 run susumu_asr_ros susumu_asr_node --ros-args \
-  -p enable_memory_profiling:=true
-```
-
-## トラブルシューティング
-
-### Google Cloud認証
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
-```
-
-### PyAudioインストール
-```bash
-sudo apt-get install portaudio19-dev
-pip install pyaudio
-```
-
-### CUDAメモリ不足（Whisper使用時）
-```bash
-export CUDA_VISIBLE_DEVICES=""  # CPUモードに切り替え
-```
-
-### ウェイクワード検出調整
-OpenWakeWordのモデルファイルを`models/`ディレクトリに配置し、`oww_model_name`パラメータで指定。
-
-## パッケージタイプ
-- ROS2 ament_pythonパッケージ
-- ライセンス: MIT
-- コンソールスクリプトエントリーポイント付きPythonパッケージ
+| 変数 | 用途 |
+|------|------|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Google Cloud認証JSONのパス |
+| `CUDA_VISIBLE_DEVICES=""` | WhisperをCPUモードで実行 |
