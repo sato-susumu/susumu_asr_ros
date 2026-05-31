@@ -1,4 +1,4 @@
-"""ASR/VAD プラグインの抽象基底クラス、列挙型、パラメータ宣言型."""
+"""ASR/VAD プラグインの抽象基底クラス、列挙型、データクラス、パラメータ宣言型."""
 import queue
 import threading
 from abc import ABC, abstractmethod
@@ -9,6 +9,7 @@ from enum import Enum
 class VADEvent(str, Enum):
     """VADプラグインの process_frame() が返すイベント名."""
 
+    SILENCE = "silence"          # 無音・待機中（処理不要）
     SPEECH_START = "speech_start"
     SPEECH_CONT = "speech_cont"
     SPEECH_STOP = "speech_stop"
@@ -22,6 +23,29 @@ class ASRCommand(str, Enum):
     AUDIO = "audio"
     STOP = "stop"
     STOP_ALL = "stop_all"
+
+
+@dataclass
+class VADResult:
+    """process_frame() の戻り値.
+
+    event が SILENCE のとき frames は空リスト。
+    event が SPEECH_START のとき frames には発話開始前のバッファ＋現フレームが含まれる。
+    それ以外のとき frames には現フレームのみが含まれる。
+    """
+
+    event: VADEvent
+    frames: list[bytes]
+
+
+@dataclass
+class ASRResult:
+    """result_queue から返る認識結果."""
+
+    is_final: bool
+    text: str
+    start: float
+    end: float | None  # partial結果では未確定のため None
 
 
 @dataclass
@@ -77,6 +101,8 @@ class VADPluginBase(ABC):
     """
 
     plugin_name: str = ""
+
+    # 発話中かどうかを示すフラグ。SpeechRecognitionSystem が WAV終端処理などで参照する。
     in_speech: bool = False
 
     def get_param_declarations(self) -> list[PluginParam]:
@@ -91,10 +117,5 @@ class VADPluginBase(ABC):
         """モデルロードなど重い初期化。load_params() の後に呼ばれる。"""
 
     @abstractmethod
-    def process_frame(self, frame: bytes):
-        """
-        1フレームを処理して (event, frames) を返す.
-
-        event: VADEvent | None
-        frames: list[bytes]
-        """
+    def process_frame(self, frame: bytes) -> VADResult:
+        """1フレームを処理して VADResult を返す。詳細は VADResult の docstring を参照。"""

@@ -21,16 +21,22 @@ def load_frames(filename: str) -> list[bytes]:
 
 
 def feed_all(plugin, frames: list[bytes]) -> list:
-    """全フレームをプラグインに送り込み、None でないイベントのみ収集して返す."""
-    return [ev for f in frames for ev in [plugin.process_frame(f)[0]] if ev is not None]
+    """全フレームをプラグインに送り込み、SILENCE 以外のイベントのみ収集して返す."""
+    from susumu_asr_ros.plugin_base import VADEvent
+    return [
+        r.event for f in frames
+        for r in [plugin.process_frame(f)]
+        if r.event != VADEvent.SILENCE
+    ]
 
 
 def feed_all_with_timing(plugin, frames: list[bytes]) -> list[tuple]:
-    """全フレームをプラグインに送り込み、(event, 秒) のリストを返す."""
+    """全フレームをプラグインに送り込み、SILENCE 以外の (event, 秒) リストを返す."""
+    from susumu_asr_ros.plugin_base import VADEvent
     frame_sec = FRAME_SAMPLES / SAMPLE_RATE
     result = []
     for i, frame in enumerate(frames):
-        ev, _ = plugin.process_frame(frame)
-        if ev is not None:
-            result.append((ev, round(i * frame_sec, 3)))
+        r = plugin.process_frame(frame)
+        if r.event != VADEvent.SILENCE:
+            result.append((r.event, round(i * frame_sec, 3)))
     return result

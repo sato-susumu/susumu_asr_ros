@@ -79,6 +79,8 @@ flowchart LR
 |---|---|
 | `VADEvent` | VADプラグインが返すイベント名の列挙型（`StrEnum`） |
 | `ASRCommand` | `audio_queue` に送るコマンド名の列挙型（`StrEnum`） |
+| `VADResult` | `process_frame()` の戻り値（`event: VADEvent`, `frames: list`） |
+| `ASRResult` | `result_queue` から返る認識結果（`is_final`, `text`, `start`, `end`） |
 | `PluginParam` | プラグインが宣言するパラメータ1件（名前・デフォルト値・説明）を保持するデータクラス |
 | `ASRPluginBase` | ASRプラグインの抽象基底クラス |
 | `VADPluginBase` | VADプラグインの抽象基底クラス |
@@ -149,23 +151,25 @@ flowchart LR
     S([Silence])
     P([Speaking])
 
-    S -->|"(None, [])"| S
+    S -->|"VADEvent.SILENCE"| S
     S -->|"VADEvent.SPEECH_START"| P
     P -->|"VADEvent.SPEECH_CONT"| P
     P -->|"VADEvent.SPEECH_STOP"| S
 ```
 
+`process_frame()` は常に `VADResult(event, frames)` を返す。
+
 | VADEvent | frames の内容 |
 |---|---|
+| `SILENCE` | `[]`（処理不要） |
 | `SPEECH_START` | 発話開始前のバッファ＋現フレーム |
 | `SPEECH_CONT` | 現フレーム |
 | `SPEECH_STOP` | 現フレーム |
 | `SPEECH_TIMEOUT` | 現フレーム（タイムアウト時） |
-| `None` | `[]` |
 
 ### ASRプラグインのキュープロトコル
 
-`audio_queue` に渡すメッセージ形式は `(ASRCommand, data: bytes)` 。`result_queue` から返すメッセージ形式は `(is_final: bool, text: str, start: float, end: float)` 。
+`audio_queue` に渡すメッセージ形式は `(ASRCommand, data: bytes)` 。`result_queue` から返すメッセージ形式は `ASRResult`（`is_final`, `text`, `start`, `end`）。`end` は partial結果では `None`。
 
 ```mermaid
 sequenceDiagram

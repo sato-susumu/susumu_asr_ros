@@ -7,7 +7,7 @@ import torch
 from rclpy.logging import get_logger
 
 from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES, FRAME_LENGTH_MS, INT16_MAX
-from susumu_asr_ros.plugin_base import PluginParam, VADEvent, VADPluginBase
+from susumu_asr_ros.plugin_base import PluginParam, VADEvent, VADPluginBase, VADResult
 
 
 class SilenceAwareVADIterator:
@@ -125,7 +125,7 @@ class SileroVADPlugin(VADPluginBase):
         self._pre_speech_buffer = collections.deque(maxlen=pre_speech_frames)
         self.in_speech = False
 
-    def process_frame(self, frame: bytes):
+    def process_frame(self, frame: bytes) -> VADResult:
         self._pre_speech_buffer.append(frame)
         data_np = np.frombuffer(frame, dtype=np.int16)
         audio_float32 = torch.from_numpy(data_np).float() / INT16_MAX
@@ -133,11 +133,11 @@ class SileroVADPlugin(VADPluginBase):
 
         if result and "start" in result:
             self.in_speech = True
-            return VADEvent.SPEECH_START, list(self._pre_speech_buffer)
+            return VADResult(VADEvent.SPEECH_START, list(self._pre_speech_buffer))
         elif result and "end" in result:
             self.in_speech = False
-            return VADEvent.SPEECH_STOP, [frame]
+            return VADResult(VADEvent.SPEECH_STOP, [frame])
         else:
             if self.in_speech:
-                return VADEvent.SPEECH_CONT, [frame]
-            return None, []
+                return VADResult(VADEvent.SPEECH_CONT, [frame])
+            return VADResult(VADEvent.SILENCE, [])

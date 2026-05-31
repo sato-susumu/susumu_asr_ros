@@ -186,10 +186,10 @@ class TestGoogleCloudASRPluginStreaming:
         plugin._response_thread.join(timeout=3.0)
 
         assert not plugin.result_queue.empty()
-        is_final, text, start, end = plugin.result_queue.get_nowait()
-        assert is_final is True
-        assert text == 'こんにちは'
-        assert start == 0.0
+        r = plugin.result_queue.get_nowait()
+        assert r.is_final is True
+        assert r.text == 'こんにちは'
+        assert r.start == 0.0
 
     def test_partial_result_queued(self):
         """is_final=False の結果が result_queue に積まれること."""
@@ -205,8 +205,8 @@ class TestGoogleCloudASRPluginStreaming:
         while not plugin.result_queue.empty():
             results.append(plugin.result_queue.get_nowait())
 
-        assert any(not r[0] for r in results), 'partial result が返りませんでした'
-        assert any(r[0] for r in results), 'final result が返りませんでした'
+        assert any(not r.is_final for r in results), 'partial result が返りませんでした'
+        assert any(r.is_final for r in results), 'final result が返りませんでした'
 
     def test_empty_alternatives_skipped(self):
         """alternatives が空のレスポンスはスキップされること."""
@@ -246,6 +246,6 @@ class TestGoogleCloudASRPluginStreaming:
             plugin._response_thread.join(timeout=3.0)
 
         if not plugin.result_queue.empty():
-            _, _, start, end = plugin.result_queue.get_nowait()
-            assert start == 1.0
-            assert end == 3.5
+            r = plugin.result_queue.get_nowait()
+            assert r.start == 1.0
+            assert r.end == 3.5

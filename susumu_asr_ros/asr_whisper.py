@@ -8,7 +8,7 @@ from faster_whisper import WhisperModel
 from rclpy.logging import get_logger
 
 from susumu_asr_ros.constants import INT16_MAX
-from susumu_asr_ros.plugin_base import ASRCommand, ASRPluginBase, PluginParam
+from susumu_asr_ros.plugin_base import ASRCommand, ASRPluginBase, ASRResult, PluginParam
 
 
 class WhisperASRPlugin(ASRPluginBase):
@@ -93,7 +93,9 @@ class WhisperASRPlugin(ASRPluginBase):
             self.logger.info("発話終了 → まとめてデコードを実行")
             text = self._run_inference(self.audio_buffer)
             if text:
-                self.result_queue.put((True, text, self._start_time, self._stop_time))
+                self.result_queue.put(
+                    ASRResult(True, text, self._start_time, self._stop_time)
+                )
             self.call_active = False
             self.audio_buffer.clear()
 
@@ -102,7 +104,9 @@ class WhisperASRPlugin(ASRPluginBase):
         if self.call_active and len(self.audio_buffer) > 0:
             text = self._run_inference(self.audio_buffer)
             if text:
-                self.result_queue.put((True, text, self._start_time, None))
+                self.result_queue.put(
+                    ASRResult(True, text, self._start_time, end=None)
+                )
 
     def _run_inference(self, audio_data: bytes) -> str:
         if not audio_data:

@@ -8,7 +8,7 @@ from openwakeword.model import Model
 from rclpy.logging import get_logger
 
 from susumu_asr_ros.constants import FRAME_LENGTH_MS, INT16_MAX, MS_PER_SEC
-from susumu_asr_ros.plugin_base import PluginParam, VADEvent, VADPluginBase
+from susumu_asr_ros.plugin_base import PluginParam, VADEvent, VADPluginBase, VADResult
 from susumu_asr_ros.vad_silero import SilenceAwareVADIterator
 
 
@@ -84,7 +84,7 @@ class OpenWakeWordPlugin(VADPluginBase):
         self._frame_count_since_start = 0
         self._total_frame_count = 0
 
-    def process_frame(self, frame: bytes):
+    def process_frame(self, frame: bytes) -> VADResult:
         self._total_frame_count += 1
 
         data_np = np.frombuffer(frame, dtype=np.int16)
@@ -102,8 +102,8 @@ class OpenWakeWordPlugin(VADPluginBase):
             if oww_score > self._threshold:
                 self.in_speech = True
                 self._frame_count_since_start = 0
-                return VADEvent.SPEECH_START, [frame]
-            return None, []
+                return VADResult(VADEvent.SPEECH_START, [frame])
+            return VADResult(VADEvent.SILENCE, [])
         else:
             self._frame_count_since_start += 1
             elapsed = (self._frame_count_since_start * FRAME_LENGTH_MS) / MS_PER_SEC
@@ -112,5 +112,5 @@ class OpenWakeWordPlugin(VADPluginBase):
                 elapsed >= self._speech_timeout_sec
             ):
                 self.in_speech = False
-                return VADEvent.SPEECH_STOP, [frame]
-            return VADEvent.SPEECH_CONT, [frame]
+                return VADResult(VADEvent.SPEECH_STOP, [frame])
+            return VADResult(VADEvent.SPEECH_CONT, [frame])

@@ -102,39 +102,32 @@ class TestWhisperASRPluginInference:
 
     def test_transcription_is_nonempty(self, whisper_plugin):
         """音声ファイルを認識して空でない文字列が返ること."""
-        raw = _load_raw(AUDIO_FILE)
-        results = _run_session(whisper_plugin, raw)
+        results = _run_session(whisper_plugin, _load_raw(AUDIO_FILE))
         assert len(results) > 0, '認識結果が1件も返りませんでした'
-        is_final, text, start, end = results[-1]
-        assert is_final is True
-        assert len(text) > 0, '認識テキストが空です'
+        assert results[-1].is_final is True
+        assert len(results[-1].text) > 0, '認識テキストが空です'
 
     def test_transcription_contains_expected_text(self, whisper_plugin):
         """認識結果にウェイクワード後の発話内容が含まれること."""
-        raw = _load_raw(AUDIO_FILE)
-        results = _run_session(whisper_plugin, raw)
+        results = _run_session(whisper_plugin, _load_raw(AUDIO_FILE))
         assert len(results) > 0
-        text = results[-1][1]
+        text = results[-1].text
         assert 'マイクロフト' in text or 'mycroft' in text.lower(), (
             f'期待するテキストが含まれていません: {repr(text)}'
         )
 
     def test_result_is_final(self, whisper_plugin):
         """stop コマンド後の結果が is_final=True であること."""
-        raw = _load_raw(AUDIO_FILE)
-        results = _run_session(whisper_plugin, raw)
+        results = _run_session(whisper_plugin, _load_raw(AUDIO_FILE))
         assert len(results) > 0
-        is_final, _, _, _ = results[-1]
-        assert is_final is True
+        assert results[-1].is_final is True
 
     def test_timestamps_are_set(self, whisper_plugin):
         """start / end タイムスタンプが結果に含まれること."""
-        raw = _load_raw(AUDIO_FILE)
-        results = _run_session(whisper_plugin, raw)
+        results = _run_session(whisper_plugin, _load_raw(AUDIO_FILE))
         assert len(results) > 0
-        _, _, start, end = results[-1]
-        assert start == 0.0
-        assert end == pytest.approx(4.23)
+        assert results[-1].start == 0.0
+        assert results[-1].end == pytest.approx(4.23)
 
     def test_empty_audio_returns_no_result(self, whisper_plugin):
         """空の音声データでは結果が返らないこと."""
@@ -167,4 +160,4 @@ class TestWhisperASRPluginInference:
             results.append(plugin.result_queue.get_nowait())
 
         assert len(results) > 0, 'stop_all で buffer が flush されませんでした'
-        assert results[-1][0] is True
+        assert results[-1].is_final is True

@@ -6,7 +6,10 @@ from google.cloud import speech
 from rclpy.logging import get_logger
 
 from susumu_asr_ros.constants import SAMPLE_RATE
-from susumu_asr_ros.plugin_base import ASRCommand, ASRPluginBase, PluginParam
+from susumu_asr_ros.plugin_base import ASRCommand, ASRPluginBase, ASRResult, PluginParam
+
+# _audio_buffer_queue のストリーム終了シグナル
+_STREAM_END = object()
 
 
 class GoogleCloudASRPlugin(ASRPluginBase):
@@ -89,7 +92,7 @@ class GoogleCloudASRPlugin(ASRPluginBase):
         if self.call_active:
             self.logger.info("明示的にストリーミング終了を要求")
             self.call_active = False
-            self._audio_buffer_queue.put(None)
+            self._audio_buffer_queue.put(_STREAM_END)
             if self._response_thread:
                 self._response_thread.join()
                 self._response_thread = None
@@ -123,14 +126,14 @@ class GoogleCloudASRPlugin(ASRPluginBase):
                     transcript = result.alternatives[0].transcript
                     if result.is_final:
                         self.result_queue.put(
-                            (True, transcript, self._start_time, self._stop_time)
+                            ASRResult(True, transcript, self._start_time, self._stop_time)
                         )
                         self.call_active = False
-                        self._audio_buffer_queue.put(None)
+                        self._audio_buffer_queue.put(_STREAM_END)
                         return
                     else:
                         self.result_queue.put(
-                            (False, transcript, self._start_time, None)
+                            ASRResult(False, transcript, self._start_time, end=None)
                         )
         except Exception as e:
             self.logger.error(f"ストリーミング認識中に例外: {e}")
@@ -147,6 +150,6 @@ class GoogleCloudASRPlugin(ASRPluginBase):
                 if not self.call_active:
                     return
                 continue
-            if chunk is None:
+            if chunk is _STREAM_END:
                 return
             yield speech.StreamingRecognizeRequest(audio_content=chunk)
