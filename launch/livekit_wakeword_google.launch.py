@@ -34,7 +34,8 @@ def generate_launch_description():
             name='susumu_asr_node',
             output='screen',
             parameters=[{
-                'vad_plugin': 'livekit_wakeword',
+                'vad_plugin': 'silero_vad',
+                'wakeword_plugin': 'livekit_wakeword',
                 'asr_plugin': 'google_cloud',
                 'input_device_index': LaunchConfiguration('input_device_index'),
                 'debug': LaunchConfiguration('debug'),

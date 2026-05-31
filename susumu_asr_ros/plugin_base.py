@@ -9,11 +9,17 @@ import threading
 class VADEvent(str, Enum):
     """VADプラグインの process_frame() が返すイベント名."""
 
-    SILENCE = 'silence'          # 無音・待機中（処理不要）
-    SPEECH_START = 'speech_start'
-    SPEECH_CONT = 'speech_cont'
-    SPEECH_STOP = 'speech_stop'
-    SPEECH_TIMEOUT = 'speech_timeout'
+    SILENCE = 'silence'      # 無音・待機中（処理不要）
+    VAD_START = 'vad_start'
+    VAD_CONT = 'vad_cont'
+    VAD_END = 'vad_end'
+
+
+class WakewordEvent(str, Enum):
+    """WakewordPlugin の process_frame() が返すイベント名."""
+
+    SEARCHING = 'searching'      # 検索中（未検出）
+    DETECTED = 'detected'        # ウェイクワード検出
 
 
 class ASRCommand(str, Enum):
@@ -28,77 +34,87 @@ class ASRCommand(str, Enum):
 class ASREventType(str, Enum):
     """on_asr_event / on_status コールバックに渡すイベント種別."""
 
-    SPEECH_START = 'vad_speech_start'
-    SPEECH_STOP = 'vad_speech_stop'
-    PARTIAL_RESULT = 'asr_partial_result'
-    FINAL_RESULT = 'asr_final_result'
-    TIMEOUT = 'asr_timeout'
+    VAD_START = 'vad_speech_start'
+    VAD_STOP = 'vad_speech_stop'
+    WAKEWORD_LISTENING_STARTED = 'ww_listening_started'
+    WAKEWORD_DETECTED = 'ww_detected'
+    ASR_PARTIAL_RESULT = 'asr_partial_result'
+    ASR_FINAL_RESULT = 'asr_final_result'
 
 
 @dataclass
-class SpeechStartEvent:
+class VadStartEvent:
     """VAD 発話開始イベント。on_asr_event 経由で通知される."""
 
     start: float
-    score: float = 0.0
     event_type: ASREventType = field(
-        default=ASREventType.SPEECH_START, init=False
+        default=ASREventType.VAD_START, init=False
     )
 
 
 @dataclass
-class SpeechStopEvent:
+class VadStopEvent:
     """VAD 発話終了イベント。on_asr_event 経由で通知される."""
 
     start: float
     end: float
     event_type: ASREventType = field(
-        default=ASREventType.SPEECH_STOP, init=False
+        default=ASREventType.VAD_STOP, init=False
     )
 
 
 @dataclass
-class PartialResultEvent:
-    """途中認識結果イベント。on_asr_event 経由で通知される."""
+class WakewordListeningStartedEvent:
+    """ウェイクワード検出処理開始イベント。on_asr_event 経由で通知される."""
+
+    start: float
+    event_type: ASREventType = field(
+        default=ASREventType.WAKEWORD_LISTENING_STARTED, init=False
+    )
+
+
+@dataclass
+class WakewordDetectedEvent:
+    """ウェイクワード検出イベント。on_asr_event 経由で通知される."""
+
+    start: float
+    score: float
+    event_type: ASREventType = field(
+        default=ASREventType.WAKEWORD_DETECTED, init=False
+    )
+
+
+@dataclass
+class AsrPartialResultEvent:
+    """ASR 途中認識結果イベント。on_asr_event 経由で通知される."""
 
     start: float
     text: str
     event_type: ASREventType = field(
-        default=ASREventType.PARTIAL_RESULT, init=False
+        default=ASREventType.ASR_PARTIAL_RESULT, init=False
     )
 
 
 @dataclass
-class FinalResultEvent:
-    """確定認識結果イベント。on_asr_event 経由で通知される."""
+class AsrFinalResultEvent:
+    """ASR 確定認識結果イベント。on_asr_event 経由で通知される."""
 
     start: float
     end: float
     text: str
     event_type: ASREventType = field(
-        default=ASREventType.FINAL_RESULT, init=False
-    )
-
-
-@dataclass
-class TimeoutEvent:
-    """発話タイムアウトイベント。on_asr_event 経由で通知される."""
-
-    start: float
-    end: float
-    reason: str
-    event_type: ASREventType = field(
-        default=ASREventType.TIMEOUT, init=False
+        default=ASREventType.ASR_FINAL_RESULT, init=False
     )
 
 
 # on_asr_event / on_status コールバックに渡す型の Union
 ASREventUnion = (
-    SpeechStartEvent
-    | SpeechStopEvent
-    | PartialResultEvent
-    | FinalResultEvent
-    | TimeoutEvent
+    VadStartEvent
+    | VadStopEvent
+    | WakewordListeningStartedEvent
+    | WakewordDetectedEvent
+    | AsrPartialResultEvent
+    | AsrFinalResultEvent
 )
 
 
@@ -108,12 +124,20 @@ class VADResult:
     process_frame() の戻り値.
 
     event が SILENCE のとき frames は空リスト.
-    event が SPEECH_START のとき frames には発話開始前のバッファ＋現フレームが含まれる.
+    event が VAD_START のとき frames には発話開始前のバッファ＋現フレームが含まれる.
     それ以外のとき frames には現フレームのみが含まれる.
     """
 
     event: VADEvent
     frames: list[bytes]
+
+
+@dataclass
+class WakewordResult:
+    """WakewordPlugin の process_frame() の戻り値."""
+
+    event: WakewordEvent
+    score: float = 0.0
 
 
 @dataclass
@@ -183,9 +207,6 @@ class VADPluginBase(ABC):
     # 発話中かどうかを示すフラグ。SpeechRecognitionSystem が WAV終端処理などで参照する。
     in_speech: bool = False
 
-    # ウェイクワードプラグインが最後に算出したスコア（0.0〜1.0）。非対応プラグインは 0.0。
-    last_score: float = 0.0
-
     def get_param_declarations(self) -> list[PluginParam]:
         """このプラグインが使うパラメータ一覧を返す。デフォルトは空."""
         return []
@@ -200,3 +221,36 @@ class VADPluginBase(ABC):
     @abstractmethod
     def process_frame(self, frame: bytes) -> VADResult:
         """1フレームを処理して VADResult を返す。詳細は VADResult の docstring を参照."""
+
+    def extend_silence_threshold(self, silence_threshold_ms: int) -> None:
+        """Change the silence duration threshold for end-of-speech detection."""
+
+
+class WakewordPluginBase(ABC):
+    """
+    ウェイクワード検出プラグインの基底クラス.
+
+    ライフサイクル:
+        __init__()  ->  load_params()  ->  setup()  ->  reset() + process_frame()
+    """
+
+    plugin_name: str = ''
+
+    def get_param_declarations(self) -> list[PluginParam]:
+        """このプラグインが使うパラメータ一覧を返す。デフォルトは空."""
+        return []
+
+    def load_params(self, params: dict) -> None:
+        """ノードが解決したパラメータ値を受け取る。params のキーはプレフィックスなしの name."""
+
+    @abstractmethod
+    def setup(self) -> None:
+        """モデルロードなど重い初期化。load_params() の後に呼ばれる."""
+
+    @abstractmethod
+    def reset(self) -> None:
+        """内部状態をリセットする。VAD_START のたびに SRS が呼ぶ."""
+
+    @abstractmethod
+    def process_frame(self, frame: bytes) -> WakewordResult:
+        """1フレームを処理して WakewordResult を返す."""

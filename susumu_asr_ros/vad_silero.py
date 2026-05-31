@@ -125,6 +125,12 @@ class SileroVADPlugin(VADPluginBase):
         self._pre_speech_buffer = collections.deque(maxlen=pre_speech_frames)
         self.in_speech = False
 
+    def extend_silence_threshold(self, silence_threshold_ms: int) -> None:
+        """発話終了とみなす無音時間を変更する."""
+        self._vad_it.silence_threshold_frames = int(
+            math.ceil(silence_threshold_ms / FRAME_LENGTH_MS)
+        )
+
     def process_frame(self, frame: bytes) -> VADResult:
         self._pre_speech_buffer.append(frame)
         data_np = np.frombuffer(frame, dtype=np.int16)
@@ -133,11 +139,11 @@ class SileroVADPlugin(VADPluginBase):
 
         if result and 'start' in result:
             self.in_speech = True
-            return VADResult(VADEvent.SPEECH_START, list(self._pre_speech_buffer))
+            return VADResult(VADEvent.VAD_START, list(self._pre_speech_buffer))
         elif result and 'end' in result:
             self.in_speech = False
-            return VADResult(VADEvent.SPEECH_STOP, [frame])
+            return VADResult(VADEvent.VAD_END, [frame])
         else:
             if self.in_speech:
-                return VADResult(VADEvent.SPEECH_CONT, [frame])
+                return VADResult(VADEvent.VAD_CONT, [frame])
             return VADResult(VADEvent.SILENCE, [])

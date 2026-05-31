@@ -45,8 +45,11 @@ setup(
         ],
         'susumu_asr_ros.vad_plugins': [
             'silero_vad = susumu_asr_ros.vad_silero:SileroVADPlugin',
-            'livekit_wakeword = susumu_asr_ros.vad_livekit_wakeword:LivekitWakeWordPlugin',
-            'openwakeword = susumu_asr_ros.vad_openwakeword:OpenWakeWordPlugin',
+        ],
+        'susumu_asr_ros.wakeword_plugins': [
+            'passthrough = susumu_asr_ros.wakeword_passthrough:PassthroughWakewordPlugin',
+            'livekit_wakeword = susumu_asr_ros.wakeword_livekit:LivekitWakewordPlugin',
+            'openwakeword = susumu_asr_ros.wakeword_openwakeword:OpenWakewordPlugin',
         ],
     },
 )

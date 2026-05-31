@@ -21,7 +21,7 @@ from susumu_asr_ros.audio_io import (
     WavAudioRecorder,
 )
 from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
-from susumu_asr_ros.plugin_base import ASREventUnion, FinalResultEvent
+from susumu_asr_ros.plugin_base import ASREventUnion, AsrFinalResultEvent
 from susumu_asr_ros.plugin_loader import PluginLoader
 from susumu_asr_ros.susumu_asr import SpeechRecognitionSystem
 
@@ -38,6 +38,7 @@ class SusumuAsrNode(Node):
         # フレームワーク共通パラメータ
         # -------------------------------------------------------
         self.declare_parameter('vad_plugin', 'silero_vad')
+        self.declare_parameter('wakeword_plugin', 'passthrough')
         self.declare_parameter('asr_plugin', 'google_cloud')
         self.declare_parameter('input_device_index', -1)
         self.declare_parameter('input_file', '')
@@ -46,6 +47,7 @@ class SusumuAsrNode(Node):
         self.declare_parameter('list_mic_devices', False)
 
         vad_name = self.get_parameter('vad_plugin').value
+        wakeword_name = self.get_parameter('wakeword_plugin').value
         asr_name = self.get_parameter('asr_plugin').value
         input_device_index = self.get_parameter('input_device_index').value
         input_file = self.get_parameter('input_file').value or None
@@ -53,7 +55,9 @@ class SusumuAsrNode(Node):
         debug = self.get_parameter('debug').value
         list_mic = self.get_parameter('list_mic_devices').value
 
-        self.get_logger().info(f'プラグイン: vad={vad_name}, asr={asr_name}')
+        self.get_logger().info(
+            f'プラグイン: vad={vad_name}, wakeword={wakeword_name}, asr={asr_name}'
+        )
 
         if list_mic:
             MicAudioRecorder.list_devices()
@@ -69,6 +73,18 @@ class SusumuAsrNode(Node):
         self.get_logger().info(f'VAD パラメータ ({vad_name}): {vad_params}')
         self._vad_plugin.load_params(vad_params)
         self._vad_plugin.setup()
+
+        # -------------------------------------------------------
+        # Wakeword プラグイン: ロード → パラメータ宣言・注入 → setup()
+        # -------------------------------------------------------
+        wakeword_cls = PluginLoader.load_wakeword(wakeword_name)
+        self._wakeword_plugin = wakeword_cls()
+        wakeword_params = self._declare_plugin_params(
+            wakeword_name, self._wakeword_plugin.get_param_declarations()
+        )
+        self.get_logger().info(f'Wakeword パラメータ ({wakeword_name}): {wakeword_params}')
+        self._wakeword_plugin.load_params(wakeword_params)
+        self._wakeword_plugin.setup()
 
         # -------------------------------------------------------
         # ASR プラグイン: ロード → パラメータ宣言・注入 → setup()
@@ -125,6 +141,7 @@ class SusumuAsrNode(Node):
         # -------------------------------------------------------
         self._system = SpeechRecognitionSystem(
             vad_plugin=self._vad_plugin,
+            wakeword_plugin=self._wakeword_plugin,
             asr_plugin=self._asr_plugin,
             recorder=recorder,
             full_audio_writer=full_audio_writer,
@@ -156,7 +173,7 @@ class SusumuAsrNode(Node):
         msg.data = json.dumps(asdict(event), ensure_ascii=False)
         self.pub_stt_event.publish(msg)
 
-        if isinstance(event, FinalResultEvent) and event.text:
+        if isinstance(event, AsrFinalResultEvent) and event.text:
             msg2 = String()
             msg2.data = event.text
             self.pub_stt.publish(msg2)

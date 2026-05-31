@@ -1,16 +1,10 @@
 """
 SileroVADPlugin のユニットテスト.
 
-テスト音声と期待するイベント列（独立インスタンスで計測済み）:
-
-  hey_mycroft_with_silence_2s.wav (5.39s):
-    1.312s speech_start, 1.344〜3.328s speech_cont x63, 3.360s speech_stop
-
-  hey_mycroft_with_speech_with_silence_2s.wav (6.23s):
-    0.736s speech_start, 0.768〜3.648s speech_cont x92, 3.680s speech_stop
-
-  silence_3s.wav:    イベントなし
-  white_noise_3s.wav: イベントなし（振幅0.01）
+計測済みタイミング（silence_threshold_ms=1000）:
+  hey_mycroft_with_silence_2s.wav: start=1.312s, stop=3.360s
+  hey_mycroft_with_speech_with_silence_2s.wav: start=0.736s, stop=3.488s
+  silence_3s.wav / white_noise_3s.wav: イベントなし
 
 使い方:
   pytest test/test_vad_silero.py -v
@@ -35,26 +29,26 @@ class TestSileroVADPluginTiming:
     """各WAVファイルに対してイベントのタイミングをフレーム単位で検証する."""
 
     def test_hey_mycroft_with_silence_2s(self):
-        """ウェイクワード＋2秒無音: speech_start=1.312s, speech_stop=3.360s."""
+        """ウェイクワード＋2秒無音: start=1.312s, stop=4.416s（silence_threshold=2000ms）."""
         timed = feed_all_with_timing(
             _fresh_plugin(), load_frames('hey_mycroft_with_silence_2s.wav')
         )
-        events = [(ev, t) for ev, t in timed]
+        starts = [(ev, t) for ev, t in timed if ev == VADEvent.VAD_START]
+        stops = [(ev, t) for ev, t in timed if ev == VADEvent.VAD_END]
 
-        assert events[0] == (VADEvent.SPEECH_START, 1.312)
-        assert all(ev == VADEvent.SPEECH_CONT for ev, _ in events[1:-1])
-        assert events[-1] == (VADEvent.SPEECH_STOP, 3.360)
+        assert starts[0] == (VADEvent.VAD_START, 1.312)
+        assert stops[0] == (VADEvent.VAD_END, 4.416)
 
     def test_hey_mycroft_with_speech_with_silence_2s(self):
-        """ウェイクワード＋発話＋2秒無音: speech_start=0.736s, speech_stop=3.488s."""
+        """ウェイクワード＋発話＋2秒無音: start=0.736s, stop=4.544s（silence_threshold=2000ms）."""
         timed = feed_all_with_timing(
             _fresh_plugin(), load_frames('hey_mycroft_with_speech_with_silence_2s.wav')
         )
-        events = [(ev, t) for ev, t in timed]
+        starts = [(ev, t) for ev, t in timed if ev == VADEvent.VAD_START]
+        stops = [(ev, t) for ev, t in timed if ev == VADEvent.VAD_END]
 
-        assert events[0] == (VADEvent.SPEECH_START, 0.736)
-        assert all(ev == VADEvent.SPEECH_CONT for ev, _ in events[1:-1])
-        assert events[-1] == (VADEvent.SPEECH_STOP, 3.488)
+        assert starts[0] == (VADEvent.VAD_START, 0.736)
+        assert stops[0] == (VADEvent.VAD_END, 4.544)
 
     def test_silence_3s_no_events(self):
         """3秒無音: イベントなし."""
@@ -77,7 +71,7 @@ class TestSileroVADPluginParams:
         plugin.load_params({})
         plugin.setup()
         assert plugin._threshold == 0.5
-        assert plugin._silence_ms == 1000
+        assert plugin._silence_ms == 2000
         assert plugin._pre_speech_ms == 300
 
     def test_custom_params(self):

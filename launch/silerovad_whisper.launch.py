@@ -35,6 +35,7 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'vad_plugin': 'silero_vad',
+                'wakeword_plugin': 'passthrough',
                 'asr_plugin': 'whisper',
                 'input_device_index': LaunchConfiguration('input_device_index'),
                 'debug': LaunchConfiguration('debug'),
