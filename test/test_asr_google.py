@@ -1,4 +1,5 @@
-"""GoogleCloudASRPlugin のユニットテスト.
+"""
+GoogleCloudASRPlugin のユニットテスト.
 
 GCP への実通信・SpeechClient・streaming_recognize はモックで差し替える。
 
@@ -9,13 +10,11 @@ import queue
 import threading
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from susumu_asr_ros.plugin_base import ASRCommand
 
 
 def _make_plugin(language_code='ja-JP'):
-    """SpeechClient をモック済みの GoogleCloudASRPlugin を返す."""
+    """モック済みの GoogleCloudASRPlugin を返す."""
     from susumu_asr_ros.asr_google import GoogleCloudASRPlugin
     plugin = GoogleCloudASRPlugin()
     plugin.load_params({'language_code': language_code})
@@ -86,7 +85,7 @@ class TestGoogleCloudASRPluginParams:
 class TestGoogleCloudASRPluginCommands:
 
     def test_start_activates_streaming(self):
-        """start コマンドで call_active が True になりレスポンススレッドが起動すること."""
+        """Start コマンドで call_active が True になりレスポンススレッドが起動すること."""
         plugin = _make_plugin()
         plugin.client.streaming_recognize.return_value = iter([])
 
@@ -135,7 +134,7 @@ class TestGoogleCloudASRPluginCommands:
         assert plugin._audio_buffer_queue.empty()
 
     def test_stop_deactivates_streaming(self):
-        """stop コマンドで call_active が False になること."""
+        """Stop コマンドで call_active が False になること."""
         plugin = _make_plugin()
         plugin.client.streaming_recognize.return_value = iter([])
         plugin._handle_start(b'0.0')
@@ -209,7 +208,7 @@ class TestGoogleCloudASRPluginStreaming:
         assert any(r.is_final for r in results), 'final result が返りませんでした'
 
     def test_empty_alternatives_skipped(self):
-        """alternatives が空のレスポンスはスキップされること."""
+        """Alternatives が空のレスポンスはスキップされること."""
         plugin = _make_plugin()
         empty_result = MagicMock()
         empty_result.alternatives = []
@@ -231,7 +230,7 @@ class TestGoogleCloudASRPluginStreaming:
         assert plugin.call_active is False
 
     def test_stop_time_attached_to_final_result(self):
-        """stop コマンドのタイムスタンプが final result の end に付くこと."""
+        """Stop コマンドのタイムスタンプが final result の end に付くこと."""
         plugin = _make_plugin()
 
         def _delayed_response(*args, **kwargs):

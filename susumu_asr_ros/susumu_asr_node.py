@@ -1,15 +1,14 @@
 """ROS2 音声認識ノード（プラグインベース）."""
+from datetime import datetime
 import json
 import os
 import queue
 import threading
-from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, String
 
-from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
 from susumu_asr_ros.audio_io import (
     DummyAudioWriter,
     DummyLabelWriter,
@@ -20,39 +19,41 @@ from susumu_asr_ros.audio_io import (
     SpeechAudioWriter,
     WavAudioRecorder,
 )
+from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
 from susumu_asr_ros.plugin_loader import PluginLoader
 from susumu_asr_ros.susumu_asr import SpeechRecognitionSystem
 
 
 class SusumuAsrNode(Node):
-    def __init__(self):
-        super().__init__("susumu_asr_node")
 
-        self.pub_stt_event = self.create_publisher(String, "stt_event", 10)
-        self.pub_stt = self.create_publisher(String, "stt", 10)
-        self.pub_audio_level = self.create_publisher(Float32, "audio_level", 10)
-        self.pub_wakeword_score = self.create_publisher(Float32, "wakeword_score", 10)
+    def __init__(self):
+        super().__init__('susumu_asr_node')
+
+        self.pub_stt_event = self.create_publisher(String, 'stt_event', 10)
+        self.pub_stt = self.create_publisher(String, 'stt', 10)
+        self.pub_audio_level = self.create_publisher(Float32, 'audio_level', 10)
+        self.pub_wakeword_score = self.create_publisher(Float32, 'wakeword_score', 10)
 
         # -------------------------------------------------------
         # フレームワーク共通パラメータ
         # -------------------------------------------------------
-        self.declare_parameter("vad_plugin", "silero_vad")
-        self.declare_parameter("asr_plugin", "google_cloud")
-        self.declare_parameter("input_device_index", -1)
-        self.declare_parameter("input_file", "")
-        self.declare_parameter("simulate_realtime", False)
-        self.declare_parameter("debug", False)
-        self.declare_parameter("list_mic_devices", False)
+        self.declare_parameter('vad_plugin', 'silero_vad')
+        self.declare_parameter('asr_plugin', 'google_cloud')
+        self.declare_parameter('input_device_index', -1)
+        self.declare_parameter('input_file', '')
+        self.declare_parameter('simulate_realtime', False)
+        self.declare_parameter('debug', False)
+        self.declare_parameter('list_mic_devices', False)
 
-        vad_name = self.get_parameter("vad_plugin").value
-        asr_name = self.get_parameter("asr_plugin").value
-        input_device_index = self.get_parameter("input_device_index").value
-        input_file = self.get_parameter("input_file").value or None
-        simulate_realtime = self.get_parameter("simulate_realtime").value
-        debug = self.get_parameter("debug").value
-        list_mic = self.get_parameter("list_mic_devices").value
+        vad_name = self.get_parameter('vad_plugin').value
+        asr_name = self.get_parameter('asr_plugin').value
+        input_device_index = self.get_parameter('input_device_index').value
+        input_file = self.get_parameter('input_file').value or None
+        simulate_realtime = self.get_parameter('simulate_realtime').value
+        debug = self.get_parameter('debug').value
+        list_mic = self.get_parameter('list_mic_devices').value
 
-        self.get_logger().info(f"プラグイン: vad={vad_name}, asr={asr_name}")
+        self.get_logger().info(f'プラグイン: vad={vad_name}, asr={asr_name}')
 
         if list_mic:
             MicAudioRecorder.list_devices()
@@ -65,7 +66,7 @@ class SusumuAsrNode(Node):
         vad_params = self._declare_plugin_params(
             vad_name, self._vad_plugin.get_param_declarations()
         )
-        self.get_logger().info(f"VAD パラメータ ({vad_name}): {vad_params}")
+        self.get_logger().info(f'VAD パラメータ ({vad_name}): {vad_params}')
         self._vad_plugin.load_params(vad_params)
         self._vad_plugin.setup()
 
@@ -77,7 +78,7 @@ class SusumuAsrNode(Node):
         asr_params = self._declare_plugin_params(
             asr_name, self._asr_plugin.get_param_declarations()
         )
-        self.get_logger().info(f"ASR パラメータ ({asr_name}): {asr_params}")
+        self.get_logger().info(f'ASR パラメータ ({asr_name}): {asr_params}')
         self._asr_plugin.load_params(asr_params)
         self._asr_plugin.setup(queue.Queue(), queue.Queue(), threading.Event())
 
@@ -85,17 +86,17 @@ class SusumuAsrNode(Node):
         # デバッグ用ライター
         # -------------------------------------------------------
         if debug:
-            base_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            debug_dir = "./debug"
+            base_time_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+            debug_dir = './debug'
             os.makedirs(debug_dir, exist_ok=True)
-            full_audio_path = f"{debug_dir}/{base_time_str}_audio_full.wav"
-            label_text_path = f"{debug_dir}/{base_time_str}_label.txt"
+            full_audio_path = f'{debug_dir}/{base_time_str}_audio_full.wav'
+            label_text_path = f'{debug_dir}/{base_time_str}_label.txt'
             full_audio_writer = FullAudioWriter(full_audio_path)
             full_audio_writer.open()
             speech_audio_writer = SpeechAudioWriter(output_dir=debug_dir)
             label_writer = LabelWriter(label_text_path)
             self.get_logger().info(
-                f"デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}"
+                f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}'
             )
         else:
             full_audio_writer = DummyAudioWriter()
@@ -106,7 +107,7 @@ class SusumuAsrNode(Node):
         # AudioRecorder
         # -------------------------------------------------------
         if input_file:
-            self.get_logger().info(f"WAV 入力モード: file={input_file}")
+            self.get_logger().info(f'WAV 入力モード: file={input_file}')
             recorder = WavAudioRecorder(
                 read_frame_size=AUDIO_FRAME_SAMPLES,
                 input_file=input_file,
@@ -114,8 +115,10 @@ class SusumuAsrNode(Node):
             )
         else:
             idx = input_device_index if input_device_index >= 0 else None
-            self.get_logger().info(f"マイク入力モード: device_index={idx}")
-            recorder = MicAudioRecorder(read_frame_size=AUDIO_FRAME_SAMPLES, input_device_index=idx)
+            self.get_logger().info(f'マイク入力モード: device_index={idx}')
+            recorder = MicAudioRecorder(
+                read_frame_size=AUDIO_FRAME_SAMPLES, input_device_index=idx
+            )
 
         # -------------------------------------------------------
         # SpeechRecognitionSystem
@@ -135,7 +138,7 @@ class SusumuAsrNode(Node):
 
         self._thread = threading.Thread(target=self._system.start, daemon=True)
         self._thread.start()
-        self.get_logger().info("SusumuAsrNode: 初期化完了")
+        self.get_logger().info('SusumuAsrNode: 初期化完了')
 
     def _declare_plugin_params(self, prefix: str, declarations) -> dict:
         """
@@ -146,7 +149,7 @@ class SusumuAsrNode(Node):
         """
         values = {}
         for decl in declarations:
-            ros_name = f"{prefix}.{decl.name}"
+            ros_name = f'{prefix}.{decl.name}'
             self.declare_parameter(ros_name, decl.default)
             values[decl.name] = self.get_parameter(ros_name).value
         return values
@@ -156,8 +159,8 @@ class SusumuAsrNode(Node):
         msg.data = json.dumps(event_dict, ensure_ascii=False)
         self.pub_stt_event.publish(msg)
 
-        if event_dict.get("event_type") == "final_result":
-            text = event_dict.get("text", "")
+        if event_dict.get('event_type') == 'final_result':
+            text = event_dict.get('text', '')
             if text:
                 msg2 = String()
                 msg2.data = text
@@ -179,7 +182,7 @@ class SusumuAsrNode(Node):
         self.pub_wakeword_score.publish(msg)
 
     def destroy_node(self):
-        self.get_logger().info("SusumuAsrNode: destroy_node called")
+        self.get_logger().info('SusumuAsrNode: destroy_node called')
         super().destroy_node()
 
 
@@ -189,11 +192,11 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("KeyboardInterrupt: shutdown.")
+        node.get_logger().info('KeyboardInterrupt: shutdown.')
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -76,22 +76,22 @@ class SpeechRecognitionSystem:
         self.current_time: float = 0.0
         self.vad_start: float = 0.0
 
-        self.logger = get_logger("speech_recognition_system")
+        self.logger = get_logger('speech_recognition_system')
 
     def _signal_handler(self, sig, frame):
-        self.logger.info("捕捉: Ctrl+C で停止要求")
+        self.logger.info('捕捉: Ctrl+C で停止要求')
         self.stop_event.set()
         sys.exit(0)
 
     def start(self):
-        self.logger.info("システム起動。Ctrl+C で終了")
+        self.logger.info('システム起動。Ctrl+C で終了')
         for idx, info in self.recorder.get_device_info().items():
-            if info["maxInputChannels"] > 0:
+            if info['maxInputChannels'] > 0:
                 self.logger.info(f"マイクデバイス {idx}: {info['name']}")
 
         self.asr_thread.start()
         self.recorder.open()
-        self.on_status({"event_type": "listening_started"})
+        self.on_status({'event_type': 'listening_started'})
 
         try:
             while not self.stop_event.is_set():
@@ -106,15 +106,15 @@ class SpeechRecognitionSystem:
                 if not frame:
                     if isinstance(self.recorder, WavAudioRecorder):
                         if self.vad_plugin.in_speech:
-                            self.logger.info("WAV 終端: 発話セッションを強制終了")
+                            self.logger.info('WAV 終端: 発話セッションを強制終了')
                             self.audio_queue.put(
                                 (ASRCommand.STOP, str(self.current_time).encode())
                             )
                             self.speech_audio_writer.close()
                             self.vad_plugin.in_speech = False
                         self.on_status({
-                            "event_type": "wav_finished",
-                            "duration": self.current_time,
+                            'event_type': 'wav_finished',
+                            'duration': self.current_time,
                         })
                         self.stop_event.set()
                         break
@@ -141,11 +141,11 @@ class SpeechRecognitionSystem:
 
                     if isinstance(self.vad_plugin, OpenWakeWordPlugin):
                         self.on_asr_event({
-                            "event_type": "wakeword_detected",
-                            "start": self.current_time,
-                            "end": self.current_time,
-                            "text": self.vad_plugin._model_name,
-                            "score": round(oww_score, 4),
+                            'event_type': 'wakeword_detected',
+                            'start': self.current_time,
+                            'end': self.current_time,
+                            'text': self.vad_plugin._model_name,
+                            'score': round(oww_score, 4),
                         })
 
                 elif vad_result.event == VADEvent.SPEECH_CONT:
@@ -161,7 +161,7 @@ class SpeechRecognitionSystem:
                     self.audio_queue.put((ASRCommand.STOP, str(self.current_time).encode()))
                     self.speech_audio_writer.close()
                     self.label_writer.write_segment(
-                        self.vad_start, self.current_time, "speech"
+                        self.vad_start, self.current_time, 'speech'
                     )
 
                 elif vad_result.event == VADEvent.SPEECH_TIMEOUT:
@@ -169,14 +169,14 @@ class SpeechRecognitionSystem:
                     self.audio_queue.put((ASRCommand.STOP, str(self.current_time).encode()))
                     self.speech_audio_writer.close()
                     self.on_asr_event({
-                        "event_type": "timeout",
-                        "start": self.vad_start,
-                        "end": self.current_time,
-                        "reason": "speech_duration_exceeded",
+                        'event_type': 'timeout',
+                        'start': self.vad_start,
+                        'end': self.current_time,
+                        'reason': 'speech_duration_exceeded',
                     })
 
                 elif vad_result.event != VADEvent.SILENCE:
-                    raise ValueError(f"未知のイベント: {vad_result.event}")
+                    raise ValueError(f'未知のイベント: {vad_result.event}')
 
                 self._fetch_results()
                 self._update_current_time(frame)
@@ -185,12 +185,12 @@ class SpeechRecognitionSystem:
         except KeyboardInterrupt:
             pass
         except Exception as e:
-            self.logger.error(f"エラー: {e}")
+            self.logger.error(f'エラー: {e}')
             raise
         finally:
             self.stop_event.set()
             self.recorder.close()
-            self.logger.info("終了処理。stop_all をワーカーへ送信")
+            self.logger.info('終了処理。stop_all をワーカーへ送信')
             self.audio_queue.put((ASRCommand.STOP_ALL, None))
             self.asr_thread.join()
             self._fetch_results()
@@ -198,7 +198,7 @@ class SpeechRecognitionSystem:
             self.speech_audio_writer.close()
             if isinstance(self.recorder, WavAudioRecorder):
                 time.sleep(1.0)
-            self.logger.info("プログラム終了")
+            self.logger.info('プログラム終了')
 
     def _update_current_time(self, frame: bytes) -> None:
         self.processed_size += len(frame)
@@ -214,20 +214,20 @@ class SpeechRecognitionSystem:
             if not result.text:
                 continue
             if result.is_final:
-                self.logger.info(f"[Final] {result.text}")
+                self.logger.info(f'[Final] {result.text}')
                 self.on_asr_event({
-                    "event_type": "final_result",
-                    "start": result.start,
-                    "end": result.end if result.end is not None else self.current_time,
-                    "text": result.text,
+                    'event_type': 'final_result',
+                    'start': result.start,
+                    'end': result.end if result.end is not None else self.current_time,
+                    'text': result.text,
                 })
                 if result.end is not None:
                     self.label_writer.write_segment(result.start, result.end, result.text)
             else:
-                self.logger.info(f"[Partial] {result.text}")
+                self.logger.info(f'[Partial] {result.text}')
                 self.on_asr_event({
-                    "event_type": "partial_result",
-                    "start": result.start,
-                    "end": None,
-                    "text": result.text,
+                    'event_type': 'partial_result',
+                    'start': result.start,
+                    'end': None,
+                    'text': result.text,
                 })

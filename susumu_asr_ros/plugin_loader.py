@@ -7,8 +7,8 @@ from susumu_asr_ros.plugin_base import ASRPluginBase, VADPluginBase
 class PluginLoader:
     """エントリポイントから ASR/VAD プラグインを動的にロードするクラス."""
 
-    _ASR_GROUP = "susumu_asr_ros.asr_plugins"
-    _VAD_GROUP = "susumu_asr_ros.vad_plugins"
+    _ASR_GROUP = 'susumu_asr_ros.asr_plugins'
+    _VAD_GROUP = 'susumu_asr_ros.vad_plugins'
 
     @staticmethod
     def _load_eps(group: str) -> dict:
@@ -31,7 +31,7 @@ class PluginLoader:
         if name not in eps:
             raise ValueError(
                 f"ASR プラグイン '{name}' が見つかりません。"
-                f"利用可能: {list(eps.keys())}"
+                f'利用可能: {list(eps.keys())}'
             )
         return eps[name].load()
 
@@ -42,6 +42,6 @@ class PluginLoader:
         if name not in eps:
             raise ValueError(
                 f"VAD プラグイン '{name}' が見つかりません。"
-                f"利用可能: {list(eps.keys())}"
+                f'利用可能: {list(eps.keys())}'
             )
         return eps[name].load()

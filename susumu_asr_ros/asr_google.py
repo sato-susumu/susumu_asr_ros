@@ -20,26 +20,26 @@ class GoogleCloudASRPlugin(ASRPluginBase):
     interim_results=True で途中経過(Partial)を取得.
     """
 
-    plugin_name = "google_cloud"
+    plugin_name = 'google_cloud'
 
     def get_param_declarations(self) -> list[PluginParam]:
         return [
-            PluginParam("language_code", "ja-JP", "認識言語コード (例: ja-JP, en-US)"),
+            PluginParam('language_code', 'ja-JP', '認識言語コード (例: ja-JP, en-US)'),
         ]
 
     def load_params(self, params: dict) -> None:
-        self._language_code = params.get("language_code", "ja-JP")
+        self._language_code = params.get('language_code', 'ja-JP')
 
     def setup(
         self,
         audio_queue: queue.Queue,
         result_queue: queue.Queue,
         stop_event: threading.Event,
-    ) -> "GoogleCloudASRPlugin":  # noqa: F821
+    ) -> 'GoogleCloudASRPlugin':  # noqa: F821
         self.audio_queue = audio_queue
         self.result_queue = result_queue
         self.stop_event = stop_event
-        self.logger = get_logger("google_cloud_asr")
+        self.logger = get_logger('google_cloud_asr')
 
         self.client = speech.SpeechClient()
         self.call_active = False
@@ -50,7 +50,7 @@ class GoogleCloudASRPlugin(ASRPluginBase):
         return self
 
     def run(self) -> None:
-        self.logger.info("スレッド起動: Streaming Speech API (single_utterance=True)")
+        self.logger.info('スレッド起動: Streaming Speech API (single_utterance=True)')
         while not self.stop_event.is_set():
             try:
                 command, data = self.audio_queue.get(timeout=0.5)
@@ -72,7 +72,7 @@ class GoogleCloudASRPlugin(ASRPluginBase):
         self._stop_time = None
 
         if not self.call_active:
-            self.logger.info("ストリーミング認識 開始")
+            self.logger.info('ストリーミング認識 開始')
             self.call_active = True
             while not self._audio_buffer_queue.empty():
                 self._audio_buffer_queue.get_nowait()
@@ -90,7 +90,7 @@ class GoogleCloudASRPlugin(ASRPluginBase):
     def _handle_stop(self, data: bytes) -> None:
         self._stop_time = float(data.decode())
         if self.call_active:
-            self.logger.info("明示的にストリーミング終了を要求")
+            self.logger.info('明示的にストリーミング終了を要求')
             self.call_active = False
             self._audio_buffer_queue.put(_STREAM_END)
             if self._response_thread:
@@ -100,9 +100,9 @@ class GoogleCloudASRPlugin(ASRPluginBase):
             self.logger.info("ストリーミング中ではない → 'stop' を無視")
 
     def _handle_stop_all(self) -> None:
-        self.logger.info("stop_all受信 → スレッド終了処理")
+        self.logger.info('stop_all受信 → スレッド終了処理')
         if self.call_active:
-            self._handle_stop(b"0.0")
+            self._handle_stop(b'0.0')
 
     def _streaming_recognize_loop(self) -> None:
         streaming_config = speech.StreamingRecognitionConfig(
@@ -136,10 +136,10 @@ class GoogleCloudASRPlugin(ASRPluginBase):
                             ASRResult(False, transcript, self._start_time, end=None)
                         )
         except Exception as e:
-            self.logger.error(f"ストリーミング認識中に例外: {e}")
+            self.logger.error(f'ストリーミング認識中に例外: {e}')
         finally:
             self.call_active = False
-            self.logger.info("ストリーミング終了")
+            self.logger.info('ストリーミング終了')
 
     def _request_stream(self):
         """Queue から音声チャンクを受け取って StreamingRecognizeRequest に包んで yield する."""

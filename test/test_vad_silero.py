@@ -1,4 +1,5 @@
-"""SileroVADPlugin のユニットテスト.
+"""
+SileroVADPlugin のユニットテスト.
 
 テスト音声と期待するイベント列（独立インスタンスで計測済み）:
 
@@ -14,9 +15,9 @@
 使い方:
   pytest test/test_vad_silero.py -v
 """
+from conftest import feed_all_with_timing, load_frames
 import pytest
 
-from conftest import feed_all_with_timing, load_frames
 from susumu_asr_ros.plugin_base import VADEvent
 
 

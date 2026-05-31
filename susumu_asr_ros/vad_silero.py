@@ -3,25 +3,25 @@ import collections
 import math
 
 import numpy as np
-import torch
 from rclpy.logging import get_logger
-
 from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES, FRAME_LENGTH_MS, INT16_MAX
 from susumu_asr_ros.plugin_base import PluginParam, VADEvent, VADPluginBase, VADResult
+import torch
 
 
 class SilenceAwareVADIterator:
     """
     Silero VADIterator のラッパー.
+
     発話終了判定を指定された無音継続時間に基づいて行う.
     """
 
-    MODEL_NAME = "silero_vad"
-    REPO = "snakers4/silero-vad:v4.0"
+    MODEL_NAME = 'silero_vad'
+    REPO = 'snakers4/silero-vad:v4.0'
 
     def __init__(self, silence_threshold_ms: int, threshold: float):
-        self.logger = get_logger("silence_aware_vad")
-        self.logger.info("Torch Hub からモデルをロードします...")
+        self.logger = get_logger('silence_aware_vad')
+        self.logger.info('Torch Hub からモデルをロードします...')
         self.model, self.utils = torch.hub.load(
             repo_or_dir=self.REPO,
             model=self.MODEL_NAME,
@@ -46,17 +46,17 @@ class SilenceAwareVADIterator:
     def __call__(self, audio_float32, return_seconds=False):
         if len(audio_float32) < AUDIO_FRAME_SAMPLES:
             raise ValueError(
-                f"Silero VAD には {AUDIO_FRAME_SAMPLES} サンプル以上必要です。"
-                f"受け取ったサイズ: {len(audio_float32)}"
+                f'Silero VAD には {AUDIO_FRAME_SAMPLES} サンプル以上必要です。'
+                f'受け取ったサイズ: {len(audio_float32)}'
             )
         result = self.vad_iterator(audio_float32, return_seconds=return_seconds)
         self.last_result = result
 
-        if result and "start" in result:
+        if result and 'start' in result:
             self.in_speech = True
             self.silence_frame_count = 0
             return result
-        elif result and "end" in result:
+        elif result and 'end' in result:
             if self.in_speech:
                 self.silence_frame_count = 1
                 self.in_speech = False
@@ -76,14 +76,14 @@ class SilenceAwareVADIterator:
                     self.silence_frame_count += 1
                     if self.silence_frame_count >= self.silence_threshold_frames:
                         self.silence_frame_count = 0
-                        return {"end": True}
+                        return {'end': True}
                 return None
 
 
 class SileroVADPlugin(VADPluginBase):
     """Silero VAD を用いた発話検知プラグイン."""
 
-    plugin_name = "silero_vad"
+    plugin_name = 'silero_vad'
 
     DEFAULT_THRESHOLD = 0.5
     DEFAULT_SILENCE_THRESHOLD_MS = 1000
@@ -92,31 +92,31 @@ class SileroVADPlugin(VADPluginBase):
     def get_param_declarations(self) -> list[PluginParam]:
         return [
             PluginParam(
-                "threshold", self.DEFAULT_THRESHOLD,
-                "VAD 検出しきい値 (0.0–1.0)",
+                'threshold', self.DEFAULT_THRESHOLD,
+                'VAD 検出しきい値 (0.0–1.0)',
             ),
             PluginParam(
-                "silence_threshold_ms", self.DEFAULT_SILENCE_THRESHOLD_MS,
-                "発話終了とみなす無音時間 (ms)",
+                'silence_threshold_ms', self.DEFAULT_SILENCE_THRESHOLD_MS,
+                '発話終了とみなす無音時間 (ms)',
             ),
             PluginParam(
-                "pre_speech_ms", self.DEFAULT_PRE_SPEECH_MS,
-                "発話開始時に遡って送るバッファ時間 (ms)",
+                'pre_speech_ms', self.DEFAULT_PRE_SPEECH_MS,
+                '発話開始時に遡って送るバッファ時間 (ms)',
             ),
         ]
 
     def load_params(self, params: dict) -> None:
-        self._threshold = float(params.get("threshold", self.DEFAULT_THRESHOLD))
+        self._threshold = float(params.get('threshold', self.DEFAULT_THRESHOLD))
         self._silence_ms = int(
-            params.get("silence_threshold_ms", self.DEFAULT_SILENCE_THRESHOLD_MS)
+            params.get('silence_threshold_ms', self.DEFAULT_SILENCE_THRESHOLD_MS)
         )
         self._pre_speech_ms = int(
-            params.get("pre_speech_ms", self.DEFAULT_PRE_SPEECH_MS)
+            params.get('pre_speech_ms', self.DEFAULT_PRE_SPEECH_MS)
         )
 
     def setup(self) -> None:
-        self.logger = get_logger("silero_vad")
-        self.logger.info("SilenceAwareVADIterator を初期化します...")
+        self.logger = get_logger('silero_vad')
+        self.logger.info('SilenceAwareVADIterator を初期化します...')
         self._vad_it = SilenceAwareVADIterator(
             silence_threshold_ms=self._silence_ms,
             threshold=self._threshold,
@@ -131,10 +131,10 @@ class SileroVADPlugin(VADPluginBase):
         audio_float32 = torch.from_numpy(data_np).float() / INT16_MAX
         result = self._vad_it(audio_float32, return_seconds=False)
 
-        if result and "start" in result:
+        if result and 'start' in result:
             self.in_speech = True
             return VADResult(VADEvent.SPEECH_START, list(self._pre_speech_buffer))
-        elif result and "end" in result:
+        elif result and 'end' in result:
             self.in_speech = False
             return VADResult(VADEvent.SPEECH_STOP, [frame])
         else:

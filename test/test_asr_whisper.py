@@ -1,4 +1,5 @@
-"""WhisperASRPlugin のユニットテスト.
+"""
+WhisperASRPlugin のユニットテスト.
 
 テスト音声:
   test/audio/hey_mycroft_with_speech.wav - ウェイクワード＋発話 (4.23s, ja)
@@ -6,10 +7,10 @@
 使い方:
   pytest test/test_asr_whisper.py -v
 """
+import os
 import queue
 import threading
 import wave
-import os
 
 import pytest
 
@@ -39,7 +40,7 @@ def _make_plugin(model_name='small', language_code='ja', device='cpu'):
 
 
 def _run_session(plugin, raw: bytes) -> list[tuple]:
-    """start → audio → stop → stop_all を送り込み、result_queue の結果を返す."""
+    """Start → audio → stop → stop_all を送り込み、result_queue の結果を返す."""
     plugin.audio_queue.put((ASRCommand.START, b'0.0'))
     plugin.audio_queue.put((ASRCommand.AUDIO, raw))
     plugin.audio_queue.put((ASRCommand.STOP, b'4.23'))
@@ -117,13 +118,13 @@ class TestWhisperASRPluginInference:
         )
 
     def test_result_is_final(self, whisper_plugin):
-        """stop コマンド後の結果が is_final=True であること."""
+        """Stop コマンド後の結果が is_final=True であること."""
         results = _run_session(whisper_plugin, _load_raw(AUDIO_FILE))
         assert len(results) > 0
         assert results[-1].is_final is True
 
     def test_timestamps_are_set(self, whisper_plugin):
-        """start / end タイムスタンプが結果に含まれること."""
+        """Start / end タイムスタンプが結果に含まれること."""
         results = _run_session(whisper_plugin, _load_raw(AUDIO_FILE))
         assert len(results) > 0
         assert results[-1].start == 0.0
