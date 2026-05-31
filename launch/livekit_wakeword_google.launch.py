@@ -1,4 +1,4 @@
-"""OpenWakeWord + Google Cloud ASR."""
+"""livekit-wakeword + Google Cloud ASR."""
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
@@ -13,7 +13,7 @@ def generate_launch_description():
             description='Google Cloud ASR 言語コード',
         ),
         DeclareLaunchArgument(
-            'model_name', default_value='hey_mycroft_v0.1.tflite',
+            'model_name', default_value='hey_mycroft_v0.1.onnx',
             description='ウェイクワードモデルファイル名',
         ),
         DeclareLaunchArgument(
@@ -34,13 +34,13 @@ def generate_launch_description():
             name='susumu_asr_node',
             output='screen',
             parameters=[{
-                'vad_plugin': 'openwakeword',
+                'vad_plugin': 'livekit_wakeword',
                 'asr_plugin': 'google_cloud',
                 'input_device_index': LaunchConfiguration('input_device_index'),
                 'debug': LaunchConfiguration('debug'),
                 'google_cloud.language_code': LaunchConfiguration('language_code'),
-                'openwakeword.model_name': LaunchConfiguration('model_name'),
-                'openwakeword.model_folder': LaunchConfiguration('model_folder'),
+                'livekit_wakeword.model_name': LaunchConfiguration('model_name'),
+                'livekit_wakeword.model_folder': LaunchConfiguration('model_folder'),
             }],
         ),
     ])

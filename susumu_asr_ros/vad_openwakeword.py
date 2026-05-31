@@ -89,16 +89,16 @@ class OpenWakeWordPlugin(VADPluginBase):
         data_np = np.frombuffer(frame, dtype=np.int16)
         self._oww_model.predict(data_np)
 
-        oww_score = 0.0
+        self.last_score = 0.0
         for scores in self._oww_model.prediction_buffer.values():
-            oww_score = scores[-1] if scores else 0.0
+            self.last_score = scores[-1] if scores else 0.0
 
         audio_float32 = torch.from_numpy(data_np).float() / INT16_MAX
         silero_result = self._vad_it(audio_float32, return_seconds=False)
         silero_end = (silero_result is not None) and ('end' in silero_result)
 
         if not self.in_speech:
-            if oww_score > self._threshold:
+            if self.last_score > self._threshold:
                 self.in_speech = True
                 self._frame_count_since_start = 0
                 return VADResult(VADEvent.SPEECH_START, [frame])

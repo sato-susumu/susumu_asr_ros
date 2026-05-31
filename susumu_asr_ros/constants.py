@@ -1,6 +1,7 @@
 """音声処理パイプライン全体で共通する定数."""
 
 VAD_SILERO_VAD = 'silero_vad'
+VAD_LIVEKIT_WAKEWORD = 'livekit_wakeword'
 VAD_OPENWAKEWORD = 'openwakeword'
 
 ASR_GOOGLE_CLOUD = 'google_cloud'

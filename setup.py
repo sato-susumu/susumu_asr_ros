@@ -24,8 +24,6 @@ setup(
         'torch',
         'torchaudio',
         'google-cloud-speech',
-        'openwakeword',
-        'tflite_runtime==2.14.0',
         'faster-whisper',
         'click',
     ],
@@ -40,7 +38,6 @@ setup(
     entry_points={
         'console_scripts': [
             'susumu_asr_node = susumu_asr_ros.susumu_asr_node:main',
-            'susumu_asr_monitor = susumu_asr_ros.asr_monitor:main',
         ],
         'susumu_asr_ros.asr_plugins': [
             'google_cloud = susumu_asr_ros.asr_google:GoogleCloudASRPlugin',
@@ -48,6 +45,7 @@ setup(
         ],
         'susumu_asr_ros.vad_plugins': [
             'silero_vad = susumu_asr_ros.vad_silero:SileroVADPlugin',
+            'livekit_wakeword = susumu_asr_ros.vad_livekit_wakeword:LivekitWakeWordPlugin',
             'openwakeword = susumu_asr_ros.vad_openwakeword:OpenWakeWordPlugin',
         ],
     },

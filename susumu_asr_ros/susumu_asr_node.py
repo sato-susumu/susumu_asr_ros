@@ -8,7 +8,7 @@ import threading
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, String
+from std_msgs.msg import String
 
 from susumu_asr_ros.audio_io import (
     DummyAudioWriter,
@@ -33,8 +33,6 @@ class SusumuAsrNode(Node):
 
         self.pub_stt_event = self.create_publisher(String, 'stt_event', 10)
         self.pub_stt = self.create_publisher(String, 'stt', 10)
-        self.pub_audio_level = self.create_publisher(Float32, 'audio_level', 10)
-        self.pub_wakeword_score = self.create_publisher(Float32, 'wakeword_score', 10)
 
         # -------------------------------------------------------
         # フレームワーク共通パラメータ
@@ -133,9 +131,6 @@ class SusumuAsrNode(Node):
             label_writer=label_writer,
             speech_audio_writer=speech_audio_writer,
             on_asr_event=self._on_asr_event,
-            on_audio_level=self._on_audio_level,
-            on_wakeword_score=self._on_wakeword_score,
-            on_status=self._on_status,
         )
 
         self._thread = threading.Thread(target=self._system.start, daemon=True)
@@ -165,21 +160,6 @@ class SusumuAsrNode(Node):
             msg2 = String()
             msg2.data = event.text
             self.pub_stt.publish(msg2)
-
-    def _on_status(self, event: ASREventUnion):
-        msg = String()
-        msg.data = json.dumps(asdict(event), ensure_ascii=False)
-        self.pub_stt_event.publish(msg)
-
-    def _on_audio_level(self, rms: float):
-        msg = Float32()
-        msg.data = rms
-        self.pub_audio_level.publish(msg)
-
-    def _on_wakeword_score(self, score: float):
-        msg = Float32()
-        msg.data = score
-        self.pub_wakeword_score.publish(msg)
 
     def destroy_node(self):
         self.get_logger().info('SusumuAsrNode: destroy_node called')

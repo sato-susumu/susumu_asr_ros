@@ -46,6 +46,46 @@ source install/setup.bash
 
 ---
 
+## システム概要
+
+```mermaid
+sequenceDiagram
+    participant MIC as マイク
+    participant VAD as VADPlugin
+    participant ASR as ASRPlugin
+    participant EVT as stt_event topic
+
+    loop 待機中
+        MIC ->> VAD : audio frame
+    end
+
+    MIC ->> VAD : audio frame
+    VAD -->> EVT : vad_speech_start
+    loop 発話中
+        MIC ->> VAD : audio frame
+        VAD ->> ASR : 音声データ転送
+        ASR -->> EVT : asr_partial_result
+    end
+    VAD -->> EVT : vad_speech_stop
+    ASR -->> EVT : asr_final_result
+```
+
+---
+
+## `/stt_event` トピックのイベント一覧
+
+`/stt_event` は全イベントを JSON で配信する。`event_type` フィールドで種別を識別する。
+
+| `event_type` | 由来 | 主なフィールド |
+|---|---|---|
+| `vad_speech_start` | VAD | `start`, `score`（ウェイクワードスコア。非対応プラグインは 0.0） |
+| `vad_speech_stop` | VAD | `start`, `end` |
+| `asr_partial_result` | ASR | `start`, `text` |
+| `asr_final_result` | ASR | `start`, `end`, `text` |
+| `asr_timeout` | ASR | `start`, `end`, `reason` |
+
+---
+
 ## launchファイルから起動
 
 ### livekit-wakeword＋google音声認識
@@ -86,27 +126,32 @@ ros2 run susumu_asr_ros susumu_asr_node
 
 `susumu_asr_node.py` では、ROS 2 のパラメータを使って以下の項目を切り替えられます。
 
-| パラメータ名           | 型      | 既定値               | 説明                                         |
-|------------------------|---------|----------------------|--------------------------------------------|
-| `list_mic_devices`     | bool    | `False`             | `True` にすると起動時にマイクデバイス一覧を表示                |
-| `vad_type`             | string  | `"livekit_wakeword"` | `silero_vad` or `livekit_wakeword`         |
-| `asr_type`             | string  | `"google_cloud"`     | `google_cloud` or `whisper`                |
-| `language_code`        | string  | `"ja-JP"`            | Google Cloud Speech-to-Text の言語コード          |
-| `wakeword_model_path`  | string  | `"models/hey_mycroft_v0.1.onnx"` | livekit-wakeword の ONNX モデルパス（なければ自動ダウンロード） |
-| `input_device_index`   | int     | `None`              | マイク入力のデバイスインデックス (未指定の場合、デフォルトマイク)           |
-| `input_file`           | string  | `None`              | WAV ファイルのパスを指定するとファイル入力に切り替わる              |
-| `simulate_realtime`    | bool    | `False`             | WAV ファイル入力時にフレーム単位で遅延を挿入し、リアルタイムっぽく動かす     |
-| `debug`                | bool    | `False`             | `True` にするとデバッグモードでの全音声 WAV 出力 & ラベル出力を有効化 |
+| パラメータ名                        | 型      | 既定値                       | 説明                                                        |
+|-------------------------------------|---------|------------------------------|-------------------------------------------------------------|
+| `list_mic_devices`                  | bool    | `False`                      | `True` にすると起動時にマイクデバイス一覧を表示             |
+| `vad_plugin`                        | string  | `"silero_vad"`               | `silero_vad` / `livekit_wakeword`                           |
+| `asr_plugin`                        | string  | `"google_cloud"`             | `google_cloud` or `whisper`                                 |
+| `input_device_index`                | int     | `-1`                         | マイク入力のデバイスインデックス（-1 でシステムデフォルト） |
+| `input_file`                        | string  | `""`                         | WAV ファイルのパスを指定するとファイル入力に切り替わる      |
+| `simulate_realtime`                 | bool    | `False`                      | WAV ファイル入力時にリアルタイムを模倣して遅延を挿入する    |
+| `debug`                             | bool    | `False`                      | 全音声 WAV 出力 & VAD ラベル出力を有効化                    |
+| `livekit_wakeword.model_name`       | string  | `"hey_mycroft_v0.1.onnx"`    | livekit-wakeword の ONNX モデルファイル名                   |
+| `livekit_wakeword.model_folder`     | string  | `"models"`                   | モデルファイルが置かれたディレクトリ                        |
+| `livekit_wakeword.threshold`        | float   | `0.5`                        | ウェイクワード検出しきい値（0.0〜1.0）                      |
+| `google_cloud.language_code`        | string  | `"ja-JP"`                    | Google Cloud Speech-to-Text の言語コード                    |
+| `whisper.model_name`                | string  | `"large-v2"`                 | faster-whisper モデル名                                     |
+| `whisper.language_code`             | string  | `"ja"`                       | Whisper 言語コード（`auto` で自動判別）                     |
+| `whisper.device`                    | string  | `"auto"`                     | 推論デバイス（`auto` / `cpu` / `cuda`）                     |
 
 ### パラメータ指定例
 
-たとえば、VADを"Silero VAD"、ASRを"Google Cloud"にする場合:
+VAD を SileroVAD、ASR を Google Cloud にする場合:
 
 ```bash
 ros2 run susumu_asr_ros susumu_asr_node \
   --ros-args \
-    -p vad_type:=silero_vad \
-    -p asr_type:=google_cloud
+    -p vad_plugin:=silero_vad \
+    -p asr_plugin:=google_cloud
 ```
 
 WAVファイルから入力し、リアルタイムシミュレーションを ON にする:

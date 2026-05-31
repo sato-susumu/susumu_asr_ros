@@ -35,17 +35,17 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 (MicAudioRecorder / WavAudioRecorder)
 ```
 
-### 主要クラス（`susumu_asr_ros/susumu_asr.py`）
+### 主要クラス
 
-| クラス | 役割 |
-|--------|------|
-| `VADBase` | VAD抽象基底クラス。`process_frame(bytes) -> (event, frames)` を定義 |
-| `SileroVadProcessor` | PyTorch + Silero VADで発話区間検出。`speech_start/speech_cont/speech_stop` を返す |
-| `LiveKitWakeWordProcessor` | livekit-wakewordでウェイクワード検出後、Silero VADで発話終了を検出 |
-| `ASRBase` | ASR抽象基底クラス。`run()` を定義 |
-| `GoogleCloudASR` | ストリーミング認識（`single_utterance=True`）。`_audio_buffer_queue` 経由で音声を受け取り別スレッドで応答処理 |
-| `WhisperASR` | バッチ認識。発話終了まで音声を `audio_buffer` に蓄積してまとめてデコード |
-| `SpeechRecognitionSystem` | メインループ。`on_asr_event` コールバックで認識結果をROS2ノードへ通知 |
+| クラス | ファイル | 役割 |
+|--------|----------|------|
+| `VADPluginBase` | `plugin_base.py` | VAD抽象基底クラス。`process_frame(bytes) -> VADResult` を定義。`last_score` でウェイクワードスコアを公開 |
+| `SileroVadPlugin` | `vad_silero.py` | PyTorch + Silero VADで発話区間検出 |
+| `LivekitWakeWordPlugin` | `vad_livekit_wakeword.py` | livekit-wakeword（ONNX）でウェイクワード検出後、Silero VADで発話終了を検出 |
+| `ASRPluginBase` | `plugin_base.py` | ASR抽象基底クラス。`run()` を定義 |
+| `GoogleCloudASRPlugin` | `asr_google.py` | ストリーミング認識（`single_utterance=True`）。別スレッドでレスポンス処理 |
+| `WhisperASRPlugin` | `asr_whisper.py` | バッチ認識。発話終了まで音声を蓄積してまとめてデコード |
+| `SpeechRecognitionSystem` | `susumu_asr.py` | メインループ。`on_asr_event` コールバックで全イベントをROS2ノードへ通知 |
 
 ### スレッド構成
 
@@ -55,13 +55,23 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 
 ### キュー通信プロトコル
 
-`audio_queue` に渡すメッセージ形式：`(command: str, data: bytes)`
-- `("start", timestamp_bytes)` — 発話開始
-- `("audio", pcm_bytes)` — 音声データ
-- `("stop", timestamp_bytes)` — 発話終了
-- `("stop_all", None)` — シャットダウン
+`audio_queue` に渡すメッセージ形式：`(ASRCommand, data: bytes)`
+- `(ASRCommand.START, timestamp_bytes)` — 発話開始
+- `(ASRCommand.AUDIO, pcm_bytes)` — 音声データ
+- `(ASRCommand.STOP, timestamp_bytes)` — 発話終了
+- `(ASRCommand.STOP_ALL, None)` — シャットダウン
 
-`result_queue` から返るメッセージ形式：`(is_final: bool, text: str, start: float, end: float)`
+`result_queue` から返るメッセージ形式：`ASRResult(is_final, text, start, end)`（`end` は partial では `None`）
+
+### `/stt_event` イベント一覧
+
+| `event_type` | 由来 | 主なフィールド |
+|---|---|---|
+| `vad_speech_start` | VAD | `start`, `score` |
+| `vad_speech_stop` | VAD | `start`, `end` |
+| `asr_partial_result` | ASR | `start`, `text` |
+| `asr_final_result` | ASR | `start`, `end`, `text` |
+| `asr_timeout` | ASR | `start`, `end`, `reason` |
 
 ### ROS2ノード（`susumu_asr_ros/susumu_asr_node.py`）
 
@@ -69,21 +79,19 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 
 | トピック | 型 | 内容 |
 |----------|----|------|
-| `/stt_event` | `String` | JSON形式の全イベント（`wakeword_detected`, `partial_result`, `final_result`, `timeout`） |
+| `/stt_event` | `String` | JSON形式の全イベント（VAD由来: `vad_listening_started`, `vad_speech_start`, `vad_speech_stop` / ASR由来: `asr_partial_result`, `asr_final_result`, `asr_timeout`） |
 | `/stt` | `String` | `final_result` 時のテキストのみ |
 
-### モニタリングノード（`susumu_asr_ros/asr_monitor.py`）
-
-`/stt_event` をサブスクライブして統計（検出回数・成功率・平均処理時間）をターミナル表示する独立ノード。
 
 ## 音声設定の定数
 
-`susumu_asr.py` 内の定数を変える場合：
+`constants.py` で定義。変更する場合はここを編集する。
 
 - `SAMPLE_RATE = 16000` — WAVファイル入力時もこのレートを強制チェック
-- `FRAME_DURATION_MS = 30` — PyAudioのread_frame_sizeと連動
-- `SILERO_VAD_THRESHOLD = 0.5` — SileroVADの検出感度
-- `LIVEKIT_WAKEWORD_SPEECH_TIMEOUT_SECONDS = 8.0` — ウェイクワード後の最大録音時間
+- `FRAME_LENGTH_MS = 30` — PyAudioのread_frame_sizeと連動
+- `AUDIO_FRAME_SAMPLES = 512` — Silero VAD が要求する最小サンプル数
+
+プラグイン固有のしきい値（VAD検出感度・タイムアウト等）は launch ファイルまたは `--ros-args` のパラメータで上書きする。
 
 ## デバッグモード
 

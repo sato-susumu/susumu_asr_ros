@@ -16,7 +16,7 @@
   - [ASRプラグインのキュープロトコル](#asrプラグインのキュープロトコル)
 - [VADプラグイン](#vadプラグイン)
   - [vad_silero.py](#vad_sileropy)
-  - [vad_openwakeword.py](#vad_openwakewordpy)
+  - [vad_livekit_wakeword.py](#vad_livekit_wakewordpy)
 - [ASRプラグイン](#asrプラグイン)
   - [asr_google.py](#asr_googlepy)
   - [asr_whisper.py](#asr_whisperpy)
@@ -27,7 +27,6 @@
   - [SpeechRecognitionSystem コールバックプロトコル](#speechrecognitionsystem-コールバックプロトコル)
 - [ROS2ノード](#ros2ノード)
   - [susumu_asr_node.py](#susumu_asr_nodepy)
-  - [asr_monitor.py](#asr_monitorpy)
 
 ---
 
@@ -52,6 +51,128 @@ flowchart LR
     SRS -->|on_asr_event| NODE
 ```
 
+以下のシーケンスで共通する participant は省略表記を統一する。
+
+| 省略名 | 実体 |
+|---|---|
+| AR | AudioRecorder |
+| SRS | SpeechRecognitionSystem |
+| VAD | VADPlugin |
+| ASR | ASRPlugin |
+| NODE | SusumuAsrNode |
+| EVT | stt_event topic |
+| STT | stt topic |
+
+#### ケース1: 正常系（発話検出 → ASR認識完了）
+
+```mermaid
+sequenceDiagram
+    participant AR as AR
+    participant SRS as SRS
+    participant VAD as VAD
+    participant ASR as ASR
+    participant NODE as NODE
+    participant EVT as EVT
+    participant STT as STT
+
+    loop 待機中
+        AR ->> SRS : frame
+        SRS ->> VAD : process_frame(frame)
+        VAD -->> SRS : SILENCE
+    end
+
+    AR ->> SRS : frame
+    SRS ->> VAD : process_frame(frame)
+    VAD -->> SRS : SPEECH_START
+    SRS ->> ASR : (START, timestamp)
+    SRS ->> NODE : SpeechStartEvent
+    NODE -->> EVT : vad_speech_start
+
+    loop 発話中
+        AR ->> SRS : frame
+        SRS ->> VAD : process_frame(frame)
+        VAD -->> SRS : SPEECH_CONT
+        SRS ->> ASR : (AUDIO, pcm_bytes)
+        ASR -->> NODE : PartialResultEvent
+        NODE -->> EVT : asr_partial_result
+    end
+
+    AR ->> SRS : frame
+    SRS ->> VAD : process_frame(frame)
+    VAD -->> SRS : SPEECH_STOP
+    SRS ->> ASR : (STOP, timestamp)
+    SRS ->> NODE : SpeechStopEvent
+    NODE -->> EVT : vad_speech_stop
+
+    ASR -->> SRS : ASRResult(is_final=True, text=...)
+    SRS ->> NODE : FinalResultEvent
+    NODE -->> EVT : asr_final_result
+    NODE -->> STT : テキスト
+```
+
+#### ケース2: タイムアウト（発話が長すぎて強制終了）
+
+発話開始後、`speech_timeout_sec` を超えても無音にならない場合。`SPEECH_STOP` の代わりに `SPEECH_TIMEOUT` が返り、ASR 結果は捨てられる。
+
+```mermaid
+sequenceDiagram
+    participant SRS as SRS
+    participant VAD as VAD
+    participant ASR as ASR
+    participant NODE as NODE
+    participant EVT as EVT
+
+    note over SRS,VAD : SPEECH_START〜発話中は ケース1 と同じ
+
+    SRS ->> VAD : process_frame(frame)
+    VAD -->> SRS : SPEECH_TIMEOUT
+    SRS ->> ASR : (STOP, timestamp)
+    SRS ->> NODE : TimeoutEvent
+    NODE -->> EVT : asr_timeout
+```
+
+#### ケース3: ASR が空文字を返す（認識結果なし）
+
+VAD は正常に `SPEECH_STOP` を返すが、ASR が空文字 or 無音判定した場合。`FinalResultEvent` は発火しない。
+
+```mermaid
+sequenceDiagram
+    participant SRS as SRS
+    participant ASR as ASR
+    participant NODE as NODE
+    participant EVT as EVT
+
+    note over SRS,EVT : SPEECH_START〜SPEECH_STOP は ケース1 と同じ
+
+    ASR -->> SRS : ASRResult(is_final=True, text="")
+    note over SRS : text が空のため on_asr_event を呼ばない
+```
+
+#### ケース4: WAVファイル終端で発話セッションを強制終了
+
+`input_file` 指定時、発話中にファイルが終わった場合。`SPEECH_STOP` は返らず SRS が直接 STOP を送る。
+
+```mermaid
+sequenceDiagram
+    participant AR as AR
+    participant SRS as SRS
+    participant ASR as ASR
+    participant NODE as NODE
+    participant EVT as EVT
+    participant STT as STT
+
+    note over AR,EVT : SPEECH_START〜発話中は ケース1 と同じ
+
+    AR -->> SRS : frame=None (EOF)
+    SRS ->> ASR : (STOP, timestamp)
+    note over SRS : stop_event をセットしてループ終了
+
+    ASR -->> SRS : ASRResult(is_final=True, text=...)
+    SRS ->> NODE : FinalResultEvent
+    NODE -->> EVT : asr_final_result
+    NODE -->> STT : テキスト
+```
+
 ---
 
 ## 定数・基盤
@@ -69,7 +190,7 @@ flowchart LR
 | `INT16_MAX` | `32768.0` | int16 PCM を -1.0〜1.0 に正規化する係数（2^15） |
 | `MS_PER_SEC` | `1000.0` | ms を秒に変換する係数 |
 | `VAD_SILERO_VAD` | `"silero_vad"` | VADプラグイン識別名 |
-| `VAD_OPENWAKEWORD` | `"openwakeword"` | VADプラグイン識別名 |
+| `VAD_LIVEKIT_WAKEWORD` | `"livekit_wakeword"` | VADプラグイン識別名 |
 | `ASR_GOOGLE_CLOUD` | `"google_cloud"` | ASRプラグイン識別名 |
 | `ASR_WHISPER` | `"whisper"` | ASRプラグイン識別名 |
 
@@ -80,18 +201,17 @@ flowchart LR
 |---|---|
 | `VADEvent` | `process_frame()` が返すイベント名の列挙型（`StrEnum`） |
 | `ASRCommand` | `audio_queue` に送るコマンド名の列挙型（`StrEnum`） |
-| `ASREventType` | `on_asr_event` / `on_status` コールバックのイベント種別の列挙型（`StrEnum`） |
+| `ASREventType` | `on_asr_event` コールバックのイベント種別の列挙型（`StrEnum`） |
 | `VADResult` | `process_frame()` の戻り値（`event: VADEvent`, `frames: list[bytes]`） |
 | `ASRResult` | `result_queue` から返る認識結果（`is_final`, `text`, `start`, `end`） |
-| `ListeningStartedEvent` | 録音開始イベント（`on_status` 経由） |
-| `WavFinishedEvent` | WAVファイル再生完了イベント（`duration: float`）（`on_status` 経由） |
-| `WakewordDetectedEvent` | ウェイクワード検出イベント（`start`, `end`, `text`, `score`） |
+| `SpeechStartEvent` | VAD 発話開始イベント（`start`, `score`） |
+| `SpeechStopEvent` | VAD 発話終了イベント（`start`, `end`） |
 | `PartialResultEvent` | 途中認識結果イベント（`start`, `text`） |
 | `FinalResultEvent` | 確定認識結果イベント（`start`, `end`, `text`） |
 | `TimeoutEvent` | 発話タイムアウトイベント（`start`, `end`, `reason`） |
 | `PluginParam` | プラグインが宣言するパラメータ1件（名前・デフォルト値・説明）を保持するデータクラス |
 | `ASRPluginBase` | ASRプラグインの抽象基底クラス |
-| `VADPluginBase` | VADプラグインの抽象基底クラス |
+| `VADPluginBase` | VADプラグインの抽象基底クラス。`last_score: float` でウェイクワードスコアを公開する |
 
 ### `plugin_loader.py`
 `PluginLoader` クラスがPythonエントリポイント（`importlib.metadata`）を使い、プラグイン名からクラスを動的にロードする。`setup.py` に登録されたプラグインのみ発見対象となるため、サードパーティが独自プラグインを追加する際も本体コードの変更は不要。
@@ -205,8 +325,8 @@ sequenceDiagram
 ### `vad_silero.py`
 Silero VAD を用いた発話区間検出プラグイン。`SilenceAwareVADIterator`（内部クラス）が Silero の `VADIterator` をラップし、無音継続時間ベースの発話終了判定を行う。512サンプル未満のフレームは `ValueError` を送出する。
 
-### `vad_openwakeword.py`
-OpenWakeWord によるウェイクワード検出 + Silero VAD による発話終了検出プラグイン。
+### `vad_livekit_wakeword.py`
+livekit-wakeword による ONNX ウェイクワード検出 + Silero VAD による発話終了検出プラグイン。2秒のリングバッファに音声を蓄積し 0.2秒ごとに推論する。`last_score` に最新スコアを保持し、検出時は `SpeechStartEvent.score` として `/stt_event` に配信される。
 
 ---
 
@@ -258,33 +378,28 @@ faster-whisper によるバッチ認識プラグイン。
 
 - AudioRecorder からフレームを読み取り VADPlugin に渡す
 - `VADEvent` に応じて `ASRCommand` を `audio_queue` に送信する
-- `result_queue` から認識結果を受け取り `on_asr_event` コールバックで通知する
+- VAD イベント（`vad_speech_start` / `vad_speech_stop` 等）と ASR 結果（`asr_final_result` 等）をまとめて `on_asr_event` コールバックで通知する
 - WAVファイル終端・Ctrl+C・シグナルによる終了処理を行う
-- `on_audio_level`・`on_wakeword_score`・`on_status` コールバックで補助情報を通知する
 
 ### `SpeechRecognitionSystem` コールバックプロトコル
 
-コンストラクタに渡す4つのコールバックの型と呼ばれるタイミング。
+コンストラクタに渡すコールバックの型と呼ばれるタイミング。
 
 | コールバック | シグネチャ | 呼ばれるタイミング |
 |---|---|---|
-| `on_asr_event` | `(ASREventUnion) -> None` | 認識イベント発生時（下記イベント型を参照） |
-| `on_status` | `(ASREventUnion) -> None` | システム状態変化時（`ListeningStartedEvent`・`WavFinishedEvent`） |
-| `on_audio_level` | `(float) -> None` | フレームごと。RMS 音量を 0.0〜1.0 で渡す |
-| `on_wakeword_score` | `(float) -> None` | フレームごと。ウェイクワード検出スコアを 0.0〜1.0 で渡す（OpenWakeWordPlugin のみ） |
+| `on_asr_event` | `(ASREventUnion) -> None` | 全イベント発生時（下記イベント型を参照） |
 
-#### `on_asr_event` / `on_status` のイベント型
+#### `on_asr_event` のイベント型
 
 各イベントは `plugin_base.py` で定義された dataclass。`event_type` フィールド（`ASREventType`）でイベント種別を識別する。
 
 | 型 | `event_type` | フィールド |
 |---|---|---|
-| `ListeningStartedEvent` | `listening_started` | なし |
-| `WavFinishedEvent` | `wav_finished` | `duration: float`（総再生秒数） |
-| `WakewordDetectedEvent` | `wakeword_detected` | `start: float`, `end: float`, `text: str`（モデル名）, `score: float` |
-| `PartialResultEvent` | `partial_result` | `start: float`, `text: str` |
-| `FinalResultEvent` | `final_result` | `start: float`, `end: float`, `text: str` |
-| `TimeoutEvent` | `timeout` | `start: float`, `end: float`, `reason: str` |
+| `SpeechStartEvent` | `vad_speech_start` | `start: float`, `score: float`（ウェイクワードスコア。非対応プラグインは 0.0） |
+| `SpeechStopEvent` | `vad_speech_stop` | `start: float`, `end: float` |
+| `PartialResultEvent` | `asr_partial_result` | `start: float`, `text: str` |
+| `FinalResultEvent` | `asr_final_result` | `start: float`, `end: float`, `text: str` |
+| `TimeoutEvent` | `asr_timeout` | `start: float`, `end: float`, `reason: str` |
 
 `SusumuAsrNode` はこれらを `dataclasses.asdict()` でシリアライズし、`/stt_event` トピックに JSON として配信する。
 
@@ -305,16 +420,5 @@ faster-whisper によるバッチ認識プラグイン。
 | トピック | 型 | 内容 |
 |---|---|---|
 | `/stt_event` | `String` | 全イベントの JSON。`event_type` フィールドでイベント種別を識別する（詳細は上記ペイロード表を参照） |
-| `/stt` | `String` | `final_result` 時のテキストのみ（`text` フィールドの値） |
-| `/audio_level` | `Float32` | フレームごとの RMS 音量（0.0〜1.0） |
-| `/wakeword_score` | `Float32` | ウェイクワード検出スコア（0.0〜1.0）。OpenWakeWordPlugin 使用時のみ更新される |
+| `/stt` | `String` | `asr_final_result` 時のテキストのみ（`text` フィールドの値） |
 
-### `asr_monitor.py`
-**リアルタイム表示用の独立ROS2ノード。**
-
-4トピックをサブスクライブし、イベント行の下にメーターバーを常時上書き表示する。オプションなし・引数なしで起動するだけでよい。
-
-- `/stt_event` — イベントが届くたびに色付きで1行追記
-- `/stt` — `final_result` の文字列（`stt_event` で表示済みのため内部では無視）
-- `/audio_level` — 音量バーとして 0.1秒ごとに下部へ上書き表示
-- `/wakeword_score` — ウェイクワードスコアバーとして表示。0.5 以上で赤く強調

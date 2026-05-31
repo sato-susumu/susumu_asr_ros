@@ -136,6 +136,10 @@ class WavAudioRecorder(AudioRecorderBase):
         if not data:
             return b''
 
+        expected = self.read_frame_size * SAMPLE_WIDTH
+        if len(data) < expected:
+            data = data + b'\x00' * (expected - len(data))
+
         if self.simulate_realtime:
             time.sleep(FRAME_LENGTH_MS / MS_PER_SEC)
 

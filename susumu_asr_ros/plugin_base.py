@@ -28,43 +28,32 @@ class ASRCommand(str, Enum):
 class ASREventType(str, Enum):
     """on_asr_event / on_status コールバックに渡すイベント種別."""
 
-    LISTENING_STARTED = 'listening_started'
-    WAV_FINISHED = 'wav_finished'
-    WAKEWORD_DETECTED = 'wakeword_detected'
-    PARTIAL_RESULT = 'partial_result'
-    FINAL_RESULT = 'final_result'
-    TIMEOUT = 'timeout'
+    SPEECH_START = 'vad_speech_start'
+    SPEECH_STOP = 'vad_speech_stop'
+    PARTIAL_RESULT = 'asr_partial_result'
+    FINAL_RESULT = 'asr_final_result'
+    TIMEOUT = 'asr_timeout'
 
 
 @dataclass
-class ListeningStartedEvent:
-    """録音開始イベント。on_status 経由で通知される."""
+class SpeechStartEvent:
+    """VAD 発話開始イベント。on_asr_event 経由で通知される."""
 
+    start: float
+    score: float = 0.0
     event_type: ASREventType = field(
-        default=ASREventType.LISTENING_STARTED, init=False
+        default=ASREventType.SPEECH_START, init=False
     )
 
 
 @dataclass
-class WavFinishedEvent:
-    """WAVファイル再生完了イベント。on_status 経由で通知される."""
-
-    duration: float
-    event_type: ASREventType = field(
-        default=ASREventType.WAV_FINISHED, init=False
-    )
-
-
-@dataclass
-class WakewordDetectedEvent:
-    """ウェイクワード検出イベント。on_asr_event 経由で通知される."""
+class SpeechStopEvent:
+    """VAD 発話終了イベント。on_asr_event 経由で通知される."""
 
     start: float
     end: float
-    text: str    # 検出したモデル名
-    score: float  # 検出スコア（0.0〜1.0）
     event_type: ASREventType = field(
-        default=ASREventType.WAKEWORD_DETECTED, init=False
+        default=ASREventType.SPEECH_STOP, init=False
     )
 
 
@@ -105,9 +94,8 @@ class TimeoutEvent:
 
 # on_asr_event / on_status コールバックに渡す型の Union
 ASREventUnion = (
-    ListeningStartedEvent
-    | WavFinishedEvent
-    | WakewordDetectedEvent
+    SpeechStartEvent
+    | SpeechStopEvent
     | PartialResultEvent
     | FinalResultEvent
     | TimeoutEvent
@@ -194,6 +182,9 @@ class VADPluginBase(ABC):
 
     # 発話中かどうかを示すフラグ。SpeechRecognitionSystem が WAV終端処理などで参照する。
     in_speech: bool = False
+
+    # ウェイクワードプラグインが最後に算出したスコア（0.0〜1.0）。非対応プラグインは 0.0。
+    last_score: float = 0.0
 
     def get_param_declarations(self) -> list[PluginParam]:
         """このプラグインが使うパラメータ一覧を返す。デフォルトは空."""
