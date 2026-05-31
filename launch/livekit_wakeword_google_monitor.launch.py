@@ -1,99 +1,57 @@
-from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.conditions import IfCondition
-import launch.substitutions
+"""OpenWakeWord + Google Cloud ASR + モニター同時起動."""
+from launch import LaunchDescription, LaunchService
+from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node  # noqa: I201
+import launch_ros.actions  # noqa: I201
 
 
 def generate_launch_description():
-    # Launch arguments
-    language_code_arg = DeclareLaunchArgument(
-        'language_code',
-        default_value='ja-JP',
-        description='Language code for ASR (default: ja-JP)'
-    )
-
-    input_device_index_arg = DeclareLaunchArgument(
-        'input_device_index',
-        default_value='',
-        description='Input device index for microphone (empty for default)'
-    )
-
-    wakeword_model_path_arg = DeclareLaunchArgument(
-        'wakeword_model_path',
-        default_value='models/hey_mycroft_v0.1.onnx',
-        description='livekit-wakeword ONNX model path'
-    )
-
-    debug_arg = DeclareLaunchArgument(
-        'debug',
-        default_value='false',
-        description='Enable debug mode for audio output'
-    )
-
-    monitor_update_interval_arg = DeclareLaunchArgument(
-        'monitor_update_interval',
-        default_value='2.0',
-        description='Monitor update interval in seconds'
-    )
-
-    monitor_show_details_arg = DeclareLaunchArgument(
-        'monitor_show_details',
-        default_value='false',
-        description='Show detailed event history in monitor'
-    )
-
-    # ASR Node
-    asr_node = Node(
-        package='susumu_asr_ros',
-        executable='susumu_asr_node',
-        name='susumu_asr_node',
-        output='screen',
-        parameters=[
-            {'list_mic_devices': False},
-            {'vad_type': 'livekit_wakeword'},
-            {'asr_type': 'google_cloud'},
-            {'language_code': LaunchConfiguration('language_code')},
-            {'wakeword_model_path': LaunchConfiguration('wakeword_model_path')},
-            {'input_device_index': LaunchConfiguration('input_device_index')},
-            {'debug': LaunchConfiguration('debug')},
-        ]
-    )
-
-    # Monitor process (通常モード)
-    monitor_process = ExecuteProcess(
-        cmd=[
-            'ros2', 'run', 'susumu_asr_ros', 'susumu_asr_monitor',
-            '--update-interval', LaunchConfiguration('monitor_update_interval'),
-        ],
-        output='screen',
-        condition=IfCondition(
-            launch.substitutions.NotSubstitution(
-                LaunchConfiguration('monitor_show_details')
-            )
-        ),
-    )
-
-    # Monitor process (詳細モード)
-    monitor_process_details = ExecuteProcess(
-        cmd=[
-            'ros2', 'run', 'susumu_asr_ros', 'susumu_asr_monitor',
-            '--update-interval', LaunchConfiguration('monitor_update_interval'),
-            '--show-details',
-        ],
-        output='screen',
-        condition=IfCondition(LaunchConfiguration('monitor_show_details')),
-    )
-
     return LaunchDescription([
-        language_code_arg,
-        input_device_index_arg,
-        wakeword_model_path_arg,
-        debug_arg,
-        monitor_update_interval_arg,
-        monitor_show_details_arg,
-        asr_node,
-        monitor_process,
-        monitor_process_details,
+        DeclareLaunchArgument(
+            'language_code', default_value='ja-JP',
+            description='Google Cloud ASR 言語コード',
+        ),
+        DeclareLaunchArgument(
+            'model_name', default_value='hey_mycroft_v0.1.tflite',
+            description='ウェイクワードモデルファイル名',
+        ),
+        DeclareLaunchArgument(
+            'model_folder', default_value='models',
+            description='ウェイクワードモデルフォルダ',
+        ),
+        DeclareLaunchArgument(
+            'input_device_index', default_value='-1',
+            description='マイク入力デバイスインデックス（-1 でシステムデフォルト）',
+        ),
+        DeclareLaunchArgument(
+            'debug', default_value='false',
+            description='デバッグモード（音声ファイル出力）',
+        ),
+        launch_ros.actions.Node(
+            package='susumu_asr_ros',
+            executable='susumu_asr_node',
+            name='susumu_asr_node',
+            output='screen',
+            parameters=[{
+                'vad_plugin': 'openwakeword',
+                'asr_plugin': 'google_cloud',
+                'input_device_index': LaunchConfiguration('input_device_index'),
+                'debug': LaunchConfiguration('debug'),
+                'google_cloud.language_code': LaunchConfiguration('language_code'),
+                'openwakeword.model_name': LaunchConfiguration('model_name'),
+                'openwakeword.model_folder': LaunchConfiguration('model_folder'),
+            }],
+        ),
+        launch_ros.actions.Node(
+            package='susumu_asr_ros',
+            executable='susumu_asr_monitor',
+            name='susumu_asr_monitor',
+            output='screen',
+        ),
     ])
+
+
+if __name__ == '__main__':
+    launch_service = LaunchService()
+    launch_service.include_launch_description(generate_launch_description())
+    launch_service.run()

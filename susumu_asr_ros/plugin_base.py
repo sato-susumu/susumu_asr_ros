@@ -1,6 +1,6 @@
 """ASR/VAD プラグインの抽象基底クラス、列挙型、データクラス、パラメータ宣言型."""
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import queue
 import threading
@@ -23,6 +23,95 @@ class ASRCommand(str, Enum):
     AUDIO = 'audio'
     STOP = 'stop'
     STOP_ALL = 'stop_all'
+
+
+class ASREventType(str, Enum):
+    """on_asr_event / on_status コールバックに渡すイベント種別."""
+
+    LISTENING_STARTED = 'listening_started'
+    WAV_FINISHED = 'wav_finished'
+    WAKEWORD_DETECTED = 'wakeword_detected'
+    PARTIAL_RESULT = 'partial_result'
+    FINAL_RESULT = 'final_result'
+    TIMEOUT = 'timeout'
+
+
+@dataclass
+class ListeningStartedEvent:
+    """録音開始イベント。on_status 経由で通知される."""
+
+    event_type: ASREventType = field(
+        default=ASREventType.LISTENING_STARTED, init=False
+    )
+
+
+@dataclass
+class WavFinishedEvent:
+    """WAVファイル再生完了イベント。on_status 経由で通知される."""
+
+    duration: float
+    event_type: ASREventType = field(
+        default=ASREventType.WAV_FINISHED, init=False
+    )
+
+
+@dataclass
+class WakewordDetectedEvent:
+    """ウェイクワード検出イベント。on_asr_event 経由で通知される."""
+
+    start: float
+    end: float
+    text: str    # 検出したモデル名
+    score: float  # 検出スコア（0.0〜1.0）
+    event_type: ASREventType = field(
+        default=ASREventType.WAKEWORD_DETECTED, init=False
+    )
+
+
+@dataclass
+class PartialResultEvent:
+    """途中認識結果イベント。on_asr_event 経由で通知される."""
+
+    start: float
+    text: str
+    event_type: ASREventType = field(
+        default=ASREventType.PARTIAL_RESULT, init=False
+    )
+
+
+@dataclass
+class FinalResultEvent:
+    """確定認識結果イベント。on_asr_event 経由で通知される."""
+
+    start: float
+    end: float
+    text: str
+    event_type: ASREventType = field(
+        default=ASREventType.FINAL_RESULT, init=False
+    )
+
+
+@dataclass
+class TimeoutEvent:
+    """発話タイムアウトイベント。on_asr_event 経由で通知される."""
+
+    start: float
+    end: float
+    reason: str
+    event_type: ASREventType = field(
+        default=ASREventType.TIMEOUT, init=False
+    )
+
+
+# on_asr_event / on_status コールバックに渡す型の Union
+ASREventUnion = (
+    ListeningStartedEvent
+    | WavFinishedEvent
+    | WakewordDetectedEvent
+    | PartialResultEvent
+    | FinalResultEvent
+    | TimeoutEvent
+)
 
 
 @dataclass

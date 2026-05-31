@@ -24,6 +24,7 @@
   - [audio_io.py](#audio_iopy)
 - [パイプライン制御](#パイプライン制御)
   - [susumu_asr.py](#susumu_asrpy)
+  - [SpeechRecognitionSystem コールバックプロトコル](#speechrecognitionsystem-コールバックプロトコル)
 - [ROS2ノード](#ros2ノード)
   - [susumu_asr_node.py](#susumu_asr_nodepy)
   - [asr_monitor.py](#asr_monitorpy)
@@ -77,10 +78,17 @@ flowchart LR
 
 | クラス/型 | 責務 |
 |---|---|
-| `VADEvent` | VADプラグインが返すイベント名の列挙型（`StrEnum`） |
+| `VADEvent` | `process_frame()` が返すイベント名の列挙型（`StrEnum`） |
 | `ASRCommand` | `audio_queue` に送るコマンド名の列挙型（`StrEnum`） |
-| `VADResult` | `process_frame()` の戻り値（`event: VADEvent`, `frames: list`） |
+| `ASREventType` | `on_asr_event` / `on_status` コールバックのイベント種別の列挙型（`StrEnum`） |
+| `VADResult` | `process_frame()` の戻り値（`event: VADEvent`, `frames: list[bytes]`） |
 | `ASRResult` | `result_queue` から返る認識結果（`is_final`, `text`, `start`, `end`） |
+| `ListeningStartedEvent` | 録音開始イベント（`on_status` 経由） |
+| `WavFinishedEvent` | WAVファイル再生完了イベント（`duration: float`）（`on_status` 経由） |
+| `WakewordDetectedEvent` | ウェイクワード検出イベント（`start`, `end`, `text`, `score`） |
+| `PartialResultEvent` | 途中認識結果イベント（`start`, `text`） |
+| `FinalResultEvent` | 確定認識結果イベント（`start`, `end`, `text`） |
+| `TimeoutEvent` | 発話タイムアウトイベント（`start`, `end`, `reason`） |
 | `PluginParam` | プラグインが宣言するパラメータ1件（名前・デフォルト値・説明）を保持するデータクラス |
 | `ASRPluginBase` | ASRプラグインの抽象基底クラス |
 | `VADPluginBase` | VADプラグインの抽象基底クラス |
@@ -254,6 +262,32 @@ faster-whisper によるバッチ認識プラグイン。
 - WAVファイル終端・Ctrl+C・シグナルによる終了処理を行う
 - `on_audio_level`・`on_wakeword_score`・`on_status` コールバックで補助情報を通知する
 
+### `SpeechRecognitionSystem` コールバックプロトコル
+
+コンストラクタに渡す4つのコールバックの型と呼ばれるタイミング。
+
+| コールバック | シグネチャ | 呼ばれるタイミング |
+|---|---|---|
+| `on_asr_event` | `(ASREventUnion) -> None` | 認識イベント発生時（下記イベント型を参照） |
+| `on_status` | `(ASREventUnion) -> None` | システム状態変化時（`ListeningStartedEvent`・`WavFinishedEvent`） |
+| `on_audio_level` | `(float) -> None` | フレームごと。RMS 音量を 0.0〜1.0 で渡す |
+| `on_wakeword_score` | `(float) -> None` | フレームごと。ウェイクワード検出スコアを 0.0〜1.0 で渡す（OpenWakeWordPlugin のみ） |
+
+#### `on_asr_event` / `on_status` のイベント型
+
+各イベントは `plugin_base.py` で定義された dataclass。`event_type` フィールド（`ASREventType`）でイベント種別を識別する。
+
+| 型 | `event_type` | フィールド |
+|---|---|---|
+| `ListeningStartedEvent` | `listening_started` | なし |
+| `WavFinishedEvent` | `wav_finished` | `duration: float`（総再生秒数） |
+| `WakewordDetectedEvent` | `wakeword_detected` | `start: float`, `end: float`, `text: str`（モデル名）, `score: float` |
+| `PartialResultEvent` | `partial_result` | `start: float`, `text: str` |
+| `FinalResultEvent` | `final_result` | `start: float`, `end: float`, `text: str` |
+| `TimeoutEvent` | `timeout` | `start: float`, `end: float`, `reason: str` |
+
+`SusumuAsrNode` はこれらを `dataclasses.asdict()` でシリアライズし、`/stt_event` トピックに JSON として配信する。
+
 ---
 
 ## ROS2ノード
@@ -270,12 +304,17 @@ faster-whisper によるバッチ認識プラグイン。
 
 | トピック | 型 | 内容 |
 |---|---|---|
-| `/stt_event` | `String` | 全イベントのJSON（`listening_started`・`wakeword_detected`・`partial_result`・`final_result`・`timeout`・`wav_finished`） |
-| `/stt` | `String` | `final_result` 時のテキストのみ |
-| `/audio_level` | `Float32` | フレームごとのRMS音量 |
-| `/wakeword_score` | `Float32` | ウェイクワード検出スコア（OpenWakeWordPlugin使用時） |
+| `/stt_event` | `String` | 全イベントの JSON。`event_type` フィールドでイベント種別を識別する（詳細は上記ペイロード表を参照） |
+| `/stt` | `String` | `final_result` 時のテキストのみ（`text` フィールドの値） |
+| `/audio_level` | `Float32` | フレームごとの RMS 音量（0.0〜1.0） |
+| `/wakeword_score` | `Float32` | ウェイクワード検出スコア（0.0〜1.0）。OpenWakeWordPlugin 使用時のみ更新される |
 
 ### `asr_monitor.py`
-**モニタリング用の独立ROS2ノード。**
+**リアルタイム表示用の独立ROS2ノード。**
 
-`/stt_event` をサブスクライブし、統計情報とイベント履歴をターミナルに表示する。`monitor_display_loop()` メソッドで継続的なリアルタイム表示を行う。`--once` / `--events` オプショ��で1回表示して終了することもできる。
+4トピックをサブスクライブし、イベント行の下にメーターバーを常時上書き表示する。オプションなし・引数なしで起動するだけでよい。
+
+- `/stt_event` — イベントが届くたびに色付きで1行追記
+- `/stt` — `final_result` の文字列（`stt_event` で表示済みのため内部では無視）
+- `/audio_level` — 音量バーとして 0.1秒ごとに下部へ上書き表示
+- `/wakeword_score` — ウェイクワードスコアバーとして表示。0.5 以上で赤く強調

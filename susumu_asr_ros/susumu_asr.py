@@ -23,8 +23,14 @@ from susumu_asr_ros.plugin_base import (
     ASRCommand,
     ASRPluginBase,
     ASRResult,
+    FinalResultEvent,
+    ListeningStartedEvent,
+    PartialResultEvent,
+    TimeoutEvent,
     VADEvent,
     VADPluginBase,
+    WakewordDetectedEvent,
+    WavFinishedEvent,
 )
 from susumu_asr_ros.vad_openwakeword import OpenWakeWordPlugin
 
@@ -91,7 +97,7 @@ class SpeechRecognitionSystem:
 
         self.asr_thread.start()
         self.recorder.open()
-        self.on_status({'event_type': 'listening_started'})
+        self.on_status(ListeningStartedEvent())
 
         try:
             while not self.stop_event.is_set():
@@ -112,10 +118,7 @@ class SpeechRecognitionSystem:
                             )
                             self.speech_audio_writer.close()
                             self.vad_plugin.in_speech = False
-                        self.on_status({
-                            'event_type': 'wav_finished',
-                            'duration': self.current_time,
-                        })
+                        self.on_status(WavFinishedEvent(duration=self.current_time))
                         self.stop_event.set()
                         break
                     time.sleep(0.01)
@@ -140,13 +143,12 @@ class SpeechRecognitionSystem:
                     self.vad_start = self.current_time
 
                     if isinstance(self.vad_plugin, OpenWakeWordPlugin):
-                        self.on_asr_event({
-                            'event_type': 'wakeword_detected',
-                            'start': self.current_time,
-                            'end': self.current_time,
-                            'text': self.vad_plugin._model_name,
-                            'score': round(oww_score, 4),
-                        })
+                        self.on_asr_event(WakewordDetectedEvent(
+                            start=self.current_time,
+                            end=self.current_time,
+                            text=self.vad_plugin._model_name,
+                            score=round(oww_score, 4),
+                        ))
 
                 elif vad_result.event == VADEvent.SPEECH_CONT:
                     for f in vad_result.frames:
@@ -168,12 +170,11 @@ class SpeechRecognitionSystem:
                     self.logger.info("VAD タイムアウト → 'stop'")
                     self.audio_queue.put((ASRCommand.STOP, str(self.current_time).encode()))
                     self.speech_audio_writer.close()
-                    self.on_asr_event({
-                        'event_type': 'timeout',
-                        'start': self.vad_start,
-                        'end': self.current_time,
-                        'reason': 'speech_duration_exceeded',
-                    })
+                    self.on_asr_event(TimeoutEvent(
+                        start=self.vad_start,
+                        end=self.current_time,
+                        reason='speech_duration_exceeded',
+                    ))
 
                 elif vad_result.event != VADEvent.SILENCE:
                     raise ValueError(f'未知のイベント: {vad_result.event}')
@@ -215,19 +216,16 @@ class SpeechRecognitionSystem:
                 continue
             if result.is_final:
                 self.logger.info(f'[Final] {result.text}')
-                self.on_asr_event({
-                    'event_type': 'final_result',
-                    'start': result.start,
-                    'end': result.end if result.end is not None else self.current_time,
-                    'text': result.text,
-                })
+                self.on_asr_event(FinalResultEvent(
+                    start=result.start,
+                    end=result.end if result.end is not None else self.current_time,
+                    text=result.text,
+                ))
                 if result.end is not None:
                     self.label_writer.write_segment(result.start, result.end, result.text)
             else:
                 self.logger.info(f'[Partial] {result.text}')
-                self.on_asr_event({
-                    'event_type': 'partial_result',
-                    'start': result.start,
-                    'end': None,
-                    'text': result.text,
-                })
+                self.on_asr_event(PartialResultEvent(
+                    start=result.start,
+                    text=result.text,
+                ))

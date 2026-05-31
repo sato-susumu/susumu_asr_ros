@@ -1,249 +1,150 @@
-from collections import deque
+"""
+ASR リアルタイムモニター.
+
+/stt_event・/stt・/audio_level・/wakeword_score をサブスクライブし、
+イベントが届くたびにターミナルへ表示する。
+
+使い方:
+    ros2 run susumu_asr_ros susumu_asr_monitor
+"""
 from datetime import datetime
 import json
 import threading
 import time
 
-import click
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import Float32, String
+
+from susumu_asr_ros.plugin_base import ASREventType
+
+_COLORS = {
+    ASREventType.LISTENING_STARTED: '\033[96m',   # シアン
+    ASREventType.WAV_FINISHED:      '\033[96m',
+    ASREventType.WAKEWORD_DETECTED: '\033[93m',   # 黄
+    ASREventType.PARTIAL_RESULT:    '\033[90m',   # グレー
+    ASREventType.FINAL_RESULT:      '\033[92m',   # 緑
+    ASREventType.TIMEOUT:           '\033[91m',   # 赤
+}
+_RESET = '\033[0m'
+
+_BAR_WIDTH = 30
+_METER_INTERVAL = 0.1  # 秒
 
 
-class AsrMonitorStats:
-    MAX_PROCESSING_TIMES = 100
+def _format_event(event: dict) -> str:
+    ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+    raw_type = event.get('event_type', 'unknown')
 
-    def __init__(self):
-        self.total_events = 0
-        self.wakeword_detections = 0
-        self.final_results = 0
-        self.partial_results = 0
-        self.timeouts = 0
-        self.start_time = time.time()
-        self.last_activity = None
-        self.session_count = 0
-        self.processing_times = deque(maxlen=self.MAX_PROCESSING_TIMES)
+    try:
+        etype = ASREventType(raw_type)
+    except ValueError:
+        return f'[{ts}] {raw_type}: {event}'
 
-    def update(self, event_dict: dict):
-        self.total_events += 1
-        self.last_activity = datetime.now()
+    color = _COLORS.get(etype, '')
 
-        event_type = event_dict.get('event_type')
+    if etype == ASREventType.LISTENING_STARTED:
+        line = f'[{ts}] 録音開始'
+    elif etype == ASREventType.WAV_FINISHED:
+        dur = event.get('duration', 0)
+        line = f'[{ts}] WAV 再生完了 ({dur:.2f}s)'
+    elif etype == ASREventType.WAKEWORD_DETECTED:
+        text = event.get('text', '')
+        score = event.get('score', 0)
+        line = f'[{ts}] *** WAKEWORD: {text}  score={score:.4f} ***'
+    elif etype == ASREventType.PARTIAL_RESULT:
+        text = event.get('text', '')
+        line = f'[{ts}] partial: {text}'
+    elif etype == ASREventType.FINAL_RESULT:
+        text = event.get('text', '')
+        start = event.get('start', 0)
+        end = event.get('end', 0)
+        dur = f'{end - start:.1f}s' if end else '?'
+        line = f'[{ts}] FINAL ({dur}): {text}'
+    elif etype == ASREventType.TIMEOUT:
+        reason = event.get('reason', '')
+        line = f'[{ts}] TIMEOUT: {reason}'
+    else:
+        line = f'[{ts}] {raw_type}: {event}'
 
-        if event_type == 'wakeword_detected':
-            self.wakeword_detections += 1
-            self.session_count += 1
-        elif event_type == 'final_result':
-            self.final_results += 1
-            start_time = event_dict.get('start')
-            end_time = event_dict.get('end')
-            if start_time and end_time:
-                processing_time = end_time - start_time
-                self.processing_times.append(processing_time)
-        elif event_type == 'partial_result':
-            self.partial_results += 1
-        elif event_type == 'timeout':
-            self.timeouts += 1
+    return f'{color}{line}{_RESET}'
 
-    def get_uptime(self) -> float:
-        return time.time() - self.start_time
 
-    def get_avg_processing_time(self) -> float:
-        if not self.processing_times:
-            return 0.0
-        return sum(self.processing_times) / len(self.processing_times)
-
-    def get_success_rate(self) -> float:
-        if self.session_count == 0:
-            return 0.0
-        return (self.final_results / self.session_count) * 100
+def _bar(value: float, width: int = _BAR_WIDTH, color: str = '') -> str:
+    fill = min(int(value * width), width)
+    bar = '█' * fill + '░' * (width - fill)
+    return f'{color}{bar}{_RESET}' if color else bar
 
 
 class AsrMonitorNode(Node):
-    MAX_EVENT_HISTORY = 1000
 
     def __init__(self):
         super().__init__('asr_monitor')
-        self.stats = AsrMonitorStats()
-        self.event_history = deque(maxlen=self.MAX_EVENT_HISTORY)
-        self.running = True
+        self._audio_level: float = 0.0
+        self._wakeword_score: float = 0.0
+        self._lock = threading.Lock()
 
-        # ROS2 subscriber
-        self.subscription = self.create_subscription(
-            String,
-            'stt_event',
-            self.event_callback,
-            10
+        self.create_subscription(String, 'stt_event', self._cb_event, 10)
+        self.create_subscription(String, 'stt', self._cb_stt, 10)
+        self.create_subscription(Float32, 'audio_level', self._cb_audio_level, 10)
+        self.create_subscription(Float32, 'wakeword_score', self._cb_wakeword_score, 10)
+
+        self.get_logger().info(
+            'ASR Monitor 起動 — /stt_event /stt /audio_level /wakeword_score 購読中'
         )
 
-        self.get_logger().info('ASR Monitor started - listening to stt_event topic')
-
-    def event_callback(self, msg):
+    def _cb_event(self, msg: String):
         try:
-            event_dict = json.loads(msg.data)
-            self.stats.update(event_dict)
-
-            # Add timestamp to event
-            event_dict['timestamp'] = datetime.now().isoformat()
-            self.event_history.append(event_dict)
-
-        except json.JSONDecodeError as e:
-            self.get_logger().error(f'Failed to parse JSON: {e}')
-
-    def get_recent_events(self, count: int = 10) -> list[dict]:
-        return list(self.event_history)[-count:]
-
-    def print_stats(self):
-        uptime = self.stats.get_uptime()
-        avg_processing = self.stats.get_avg_processing_time()
-        success_rate = self.stats.get_success_rate()
-
-        print(f"\n{'='*60}")
-        print(f'ASR Monitor Status - Uptime: {uptime:.1f}s')
-        print(f"{'='*60}")
-        print(f'Total Events:        {self.stats.total_events}')
-        print(f'Wakeword Detections: {self.stats.wakeword_detections}')
-        print(f'Final Results:       {self.stats.final_results}')
-        print(f'Partial Results:     {self.stats.partial_results}')
-        print(f'Timeouts:            {self.stats.timeouts}')
-        print(f'Sessions:            {self.stats.session_count}')
-        print(f'Success Rate:        {success_rate:.1f}%')
-        print(f'Avg Processing Time: {avg_processing:.2f}s')
-
-        if self.stats.last_activity:
-            time_since_last = datetime.now() - self.stats.last_activity
-            print(f'Last Activity:       {time_since_last.total_seconds():.1f}s ago')
-
-        # Show recent events
-        recent_events = self.get_recent_events(5)
-        if recent_events:
-            print('\nRecent Events (last 5):')
-            for event in recent_events:
-                timestamp = event.get('timestamp', '')
-                event_type = event.get('event_type', 'unknown')
-                text = event.get('text', '')
-
-                if timestamp:
-                    dt = datetime.fromisoformat(timestamp)
-                    time_str = dt.strftime('%H:%M:%S')
-                else:
-                    time_str = '??:??:??'
-
-                if event_type == 'final_result':
-                    print(f'  {time_str} [FINAL] {text}')
-                elif event_type == 'partial_result':
-                    print(f'  {time_str} [PARTIAL] {text}')
-                elif event_type == 'wakeword_detected':
-                    print(f'  {time_str} [WAKEWORD] detected')
-                elif event_type == 'timeout':
-                    print(f'  {time_str} [TIMEOUT] speech timeout')
-                else:
-                    print(f'  {time_str} [{event_type.upper()}]')
-
-    def print_detailed_events(self, count: int = 20):
-        events = self.get_recent_events(count)
-        if not events:
-            print('No events recorded yet.')
+            event = json.loads(msg.data)
+        except json.JSONDecodeError:
             return
+        # メーター行を消してイベントを出力し、改行後メーターが次の tick で再描画される
+        print(f'\r{" " * 80}\r{_format_event(event)}', flush=True)
 
-        print(f"\n{'='*80}")
-        print(f'Detailed Event History (last {min(count, len(events))} events)')
-        print(f"{'='*80}")
+    def _cb_stt(self, msg: String):
+        pass  # stt_event の final_result で表示済み
 
-        for event in events:
-            timestamp = event.get('timestamp', '')
-            event_type = event.get('event_type', 'unknown')
-            text = event.get('text', '')
-            start_time = event.get('start')
-            end_time = event.get('end')
+    def _cb_audio_level(self, msg: Float32):
+        with self._lock:
+            self._audio_level = msg.data
 
-            if timestamp:
-                dt = datetime.fromisoformat(timestamp)
-                time_str = dt.strftime('%H:%M:%S.%f')[:-3]
-            else:
-                time_str = '??:??:??.???'
+    def _cb_wakeword_score(self, msg: Float32):
+        with self._lock:
+            self._wakeword_score = msg.data
 
-            print(f'{time_str} | {event_type:15} | ', end='')
+    def print_meter(self):
+        """音量・ウェイクワードスコアのバーを1行で上書き表示する."""
+        with self._lock:
+            level = self._audio_level
+            score = self._wakeword_score
 
-            if event_type == 'final_result':
-                duration = end_time - start_time if start_time and end_time else 0
-                print(f'[{duration:.2f}s] {text}')
-            elif event_type == 'partial_result':
-                print(f'{text}')
-            elif event_type == 'wakeword_detected':
-                score = event.get('score', 0)
-                print(f'score: {score:.2f}')
-            elif event_type == 'timeout':
-                reason = event.get('reason', 'unknown')
-                print(f'reason: {reason}')
-            else:
-                print(f'data: {event}')
-
-    def monitor_display_loop(self, update_interval: float, show_details: bool):
-        """継続的なモニタリング表示ループ."""
-        try:
-            while rclpy.ok():
-                print('\033[2J\033[H', end='')
-                if show_details:
-                    self.print_detailed_events(15)
-                else:
-                    self.print_stats()
-                print('\nPress Ctrl+C to exit...')
-                time.sleep(update_interval)
-        except KeyboardInterrupt:
-            pass
+        ww_color = '\033[91m' if score >= 0.5 else ''
+        line = (
+            f'\r  音量[{_bar(level * 6)}]{level:.3f}'
+            f'  WW[{_bar(score, color=ww_color)}]{score:.3f}'
+        )
+        print(line, end='', flush=True)
 
 
-@click.command()
-@click.option('--update-interval', '-u', default=2.0,
-              help='Update interval in seconds (default: 2.0)')
-@click.option('--show-details', '-d', is_flag=True,
-              help='Show detailed event history instead of stats')
-@click.option('--once', '-o', is_flag=True,
-              help='Show stats once and exit (no continuous monitoring)')
-@click.option('--events', '-e', type=int, help='Show last N events and exit')
-def main(update_interval: float, show_details: bool, once: bool, events: int):
-    """ASR Status Monitor - Monitor speech recognition system status and events."""
-    rclpy.init()
-    monitor_node = AsrMonitorNode()
+def _meter_loop(node: AsrMonitorNode):
+    while rclpy.ok():
+        node.print_meter()
+        time.sleep(_METER_INTERVAL)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = AsrMonitorNode()
+
+    meter_thread = threading.Thread(target=_meter_loop, args=(node,), daemon=True)
+    meter_thread.start()
 
     try:
-        if events:
-            # Show specific number of events and exit
-            print('Waiting for events...')
-            time.sleep(1)  # Give some time to collect events
-            rclpy.spin_once(monitor_node, timeout_sec=1.0)
-            monitor_node.print_detailed_events(events)
-        elif once:
-            # Show stats once and exit
-            print('Collecting data...')
-            # Spin for a short time to collect some events
-            end_time = time.time() + 2.0
-            while time.time() < end_time and rclpy.ok():
-                rclpy.spin_once(monitor_node, timeout_sec=0.1)
-            monitor_node.print_stats()
-        else:
-            # Continuous monitoring
-            print('Starting continuous monitoring...')
-            print('Collecting initial data...')
-
-            # Start ROS2 spinning in a separate thread
-            spin_thread = threading.Thread(
-                target=lambda: rclpy.spin(monitor_node),
-                daemon=True
-            )
-            spin_thread.start()
-
-            # Wait a bit to collect some initial data
-            time.sleep(1)
-
-            # Start display loop
-            monitor_node.monitor_display_loop(update_interval, show_details)
-
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        print('\nMonitoring stopped.')
+        pass
     finally:
-        monitor_node.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
 
 

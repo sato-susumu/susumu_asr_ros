@@ -1,4 +1,5 @@
 """ROS2 音声認識ノード（プラグインベース）."""
+from dataclasses import asdict
 from datetime import datetime
 import json
 import os
@@ -20,6 +21,7 @@ from susumu_asr_ros.audio_io import (
     WavAudioRecorder,
 )
 from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
+from susumu_asr_ros.plugin_base import ASREventUnion, FinalResultEvent
 from susumu_asr_ros.plugin_loader import PluginLoader
 from susumu_asr_ros.susumu_asr import SpeechRecognitionSystem
 
@@ -154,21 +156,19 @@ class SusumuAsrNode(Node):
             values[decl.name] = self.get_parameter(ros_name).value
         return values
 
-    def _on_asr_event(self, event_dict: dict):
+    def _on_asr_event(self, event: ASREventUnion):
         msg = String()
-        msg.data = json.dumps(event_dict, ensure_ascii=False)
+        msg.data = json.dumps(asdict(event), ensure_ascii=False)
         self.pub_stt_event.publish(msg)
 
-        if event_dict.get('event_type') == 'final_result':
-            text = event_dict.get('text', '')
-            if text:
-                msg2 = String()
-                msg2.data = text
-                self.pub_stt.publish(msg2)
+        if isinstance(event, FinalResultEvent) and event.text:
+            msg2 = String()
+            msg2.data = event.text
+            self.pub_stt.publish(msg2)
 
-    def _on_status(self, event_dict: dict):
+    def _on_status(self, event: ASREventUnion):
         msg = String()
-        msg.data = json.dumps(event_dict, ensure_ascii=False)
+        msg.data = json.dumps(asdict(event), ensure_ascii=False)
         self.pub_stt_event.publish(msg)
 
     def _on_audio_level(self, rms: float):
