@@ -4,7 +4,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
 from launch import LaunchService
-from susumu_asr_ros.susumu_asr import ASR_WHISPER, VAD_OPENWAKEWORD
+from susumu_asr_ros.susumu_asr import ASR_WHISPER, VAD_LIVEKIT_WAKEWORD
 
 
 def generate_launch_description():
@@ -16,16 +16,16 @@ def generate_launch_description():
                 description='デバッグモードを有効にするかどうか'
             ),
             launch_ros.actions.Node(
-                package="susumu_asr_ros",
-                executable="susumu_asr_node",
-                name="susumu_asr_node",
-                output="screen",
+                package='susumu_asr_ros',
+                executable='susumu_asr_node',
+                name='susumu_asr_node',
+                output='screen',
                 parameters=[
                     {
-                        "vad_type": VAD_OPENWAKEWORD,
-                        "asr_type": ASR_WHISPER,
-                        "debug": LaunchConfiguration('debug'),
-                        "whisper_language_code": "ja",
+                        'vad_type': VAD_LIVEKIT_WAKEWORD,
+                        'asr_type': ASR_WHISPER,
+                        'debug': LaunchConfiguration('debug'),
+                        'whisper_language_code': 'ja',
                     }
                 ],
             )

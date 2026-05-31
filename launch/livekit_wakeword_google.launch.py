@@ -4,7 +4,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
 from launch import LaunchService
-from susumu_asr_ros.susumu_asr import VAD_OPENWAKEWORD, ASR_GOOGLE_CLOUD
+from susumu_asr_ros.susumu_asr import VAD_LIVEKIT_WAKEWORD, ASR_GOOGLE_CLOUD
 
 
 def generate_launch_description():
@@ -16,15 +16,15 @@ def generate_launch_description():
                 description='デバッグモードを有効にするかどうか'
             ),
             launch_ros.actions.Node(
-                package="susumu_asr_ros",
-                executable="susumu_asr_node",
-                name="susumu_asr_node",
-                output="screen",
+                package='susumu_asr_ros',
+                executable='susumu_asr_node',
+                name='susumu_asr_node',
+                output='screen',
                 parameters=[
                     {
-                        "vad_type": VAD_OPENWAKEWORD,
-                        "asr_type": ASR_GOOGLE_CLOUD,
-                        "debug": LaunchConfiguration('debug'),
+                        'vad_type': VAD_LIVEKIT_WAKEWORD,
+                        'asr_type': ASR_GOOGLE_CLOUD,
+                        'debug': LaunchConfiguration('debug'),
                     }
                 ],
             )

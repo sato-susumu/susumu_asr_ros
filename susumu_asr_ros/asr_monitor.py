@@ -3,7 +3,6 @@ import threading
 import time
 from collections import deque
 from datetime import datetime
-from typing import Dict, List
 
 import click
 import rclpy
@@ -12,6 +11,8 @@ from std_msgs.msg import String
 
 
 class AsrMonitorStats:
+    MAX_PROCESSING_TIMES = 100
+
     def __init__(self):
         self.total_events = 0
         self.wakeword_detections = 0
@@ -21,7 +22,7 @@ class AsrMonitorStats:
         self.start_time = time.time()
         self.last_activity = None
         self.session_count = 0
-        self.processing_times = deque(maxlen=100)
+        self.processing_times = deque(maxlen=self.MAX_PROCESSING_TIMES)
 
     def update(self, event_dict: dict):
         self.total_events += 1
@@ -59,10 +60,12 @@ class AsrMonitorStats:
 
 
 class AsrMonitorNode(Node):
+    MAX_EVENT_HISTORY = 1000
+
     def __init__(self):
         super().__init__('asr_monitor')
         self.stats = AsrMonitorStats()
-        self.event_history = deque(maxlen=1000)
+        self.event_history = deque(maxlen=self.MAX_EVENT_HISTORY)
         self.running = True
 
         # ROS2 subscriber
@@ -87,7 +90,7 @@ class AsrMonitorNode(Node):
         except json.JSONDecodeError as e:
             self.get_logger().error(f'Failed to parse JSON: {e}')
 
-    def get_recent_events(self, count: int = 10) -> List[Dict]:
+    def get_recent_events(self, count: int = 10) -> list[dict]:
         return list(self.event_history)[-count:]
 
     def print_stats(self):
@@ -176,24 +179,19 @@ class AsrMonitorNode(Node):
             else:
                 print(f"data: {event}")
 
-
-def monitor_display_loop(monitor_node: AsrMonitorNode, update_interval: float, show_details: bool):
-    """Display loop for continuous monitoring"""
-    try:
-        while rclpy.ok():
-            # Clear screen (works on most terminals)
-            print("\033[2J\033[H", end="")
-
-            if show_details:
-                monitor_node.print_detailed_events(15)
-            else:
-                monitor_node.print_stats()
-
-            print("\nPress Ctrl+C to exit...")
-
-            time.sleep(update_interval)
-    except KeyboardInterrupt:
-        pass
+    def monitor_display_loop(self, update_interval: float, show_details: bool):
+        """継続的なモニタリング表示ループ."""
+        try:
+            while rclpy.ok():
+                print("\033[2J\033[H", end="")
+                if show_details:
+                    self.print_detailed_events(15)
+                else:
+                    self.print_stats()
+                print("\nPress Ctrl+C to exit...")
+                time.sleep(update_interval)
+        except KeyboardInterrupt:
+            pass
 
 
 @click.command()
@@ -241,7 +239,7 @@ def main(update_interval: float, show_details: bool, once: bool, events: int):
             time.sleep(1)
 
             # Start display loop
-            monitor_display_loop(monitor_node, update_interval, show_details)
+            monitor_node.monitor_display_loop(update_interval, show_details)
 
     except KeyboardInterrupt:
         print("\nMonitoring stopped.")

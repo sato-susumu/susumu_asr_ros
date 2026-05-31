@@ -1,0 +1,10 @@
+FROM python:3.11-slim
+
+WORKDIR /work
+
+RUN pip install --no-cache-dir livekit-wakeword numpy
+
+COPY models/hey_mycroft_v0.1.onnx models/hey_mycroft_v0.1.onnx
+COPY test_livekit_wakeword.py .
+
+CMD ["python3", "test_livekit_wakeword.py"]

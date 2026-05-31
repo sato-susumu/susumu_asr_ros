@@ -41,5 +41,13 @@ setup(
             "susumu_asr_node = susumu_asr_ros.susumu_asr_node:main",
             "susumu_asr_monitor = susumu_asr_ros.asr_monitor:main",
         ],
+        "susumu_asr_ros.asr_plugins": [
+            "google_cloud = susumu_asr_ros.asr_google:GoogleCloudASRPlugin",
+            "whisper = susumu_asr_ros.asr_whisper:WhisperASRPlugin",
+        ],
+        "susumu_asr_ros.vad_plugins": [
+            "silero_vad = susumu_asr_ros.vad_silero:SileroVADPlugin",
+            "openwakeword = susumu_asr_ros.vad_openwakeword:OpenWakeWordPlugin",
+        ],
     },
 )

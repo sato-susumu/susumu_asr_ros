@@ -1,5 +1,7 @@
+import launch.substitutions
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -18,16 +20,10 @@ def generate_launch_description():
         description='Input device index for microphone (empty for default)'
     )
 
-    oww_model_folder_arg = DeclareLaunchArgument(
-        'oww_model_folder',
-        default_value='models',
-        description='OpenWakeWord model folder path'
-    )
-
-    oww_model_name_arg = DeclareLaunchArgument(
-        'oww_model_name',
-        default_value='hey_mycroft_v0.1.tflite',
-        description='OpenWakeWord model name'
+    wakeword_model_path_arg = DeclareLaunchArgument(
+        'wakeword_model_path',
+        default_value='models/hey_mycroft_v0.1.onnx',
+        description='livekit-wakeword ONNX model path'
     )
 
     debug_arg = DeclareLaunchArgument(
@@ -56,36 +52,48 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'list_mic_devices': False},
-            {'vad_type': 'openwakeword'},
+            {'vad_type': 'livekit_wakeword'},
             {'asr_type': 'google_cloud'},
             {'language_code': LaunchConfiguration('language_code')},
-            {'oww_model_folder': LaunchConfiguration('oww_model_folder')},
-            {'oww_model_name': LaunchConfiguration('oww_model_name')},
+            {'wakeword_model_path': LaunchConfiguration('wakeword_model_path')},
             {'input_device_index': LaunchConfiguration('input_device_index')},
             {'debug': LaunchConfiguration('debug')},
         ]
     )
 
-    # Monitor process
+    # Monitor process (通常モード)
     monitor_process = ExecuteProcess(
         cmd=[
             'ros2', 'run', 'susumu_asr_ros', 'susumu_asr_monitor',
             '--update-interval', LaunchConfiguration('monitor_update_interval'),
-            ('--show-details' if LaunchConfiguration('monitor_show_details') == 'true'
-             else '')
         ],
         output='screen',
-        shell=False
+        condition=IfCondition(
+            launch.substitutions.NotSubstitution(
+                LaunchConfiguration('monitor_show_details')
+            )
+        ),
+    )
+
+    # Monitor process (詳細モード)
+    monitor_process_details = ExecuteProcess(
+        cmd=[
+            'ros2', 'run', 'susumu_asr_ros', 'susumu_asr_monitor',
+            '--update-interval', LaunchConfiguration('monitor_update_interval'),
+            '--show-details',
+        ],
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('monitor_show_details')),
     )
 
     return LaunchDescription([
         language_code_arg,
         input_device_index_arg,
-        oww_model_folder_arg,
-        oww_model_name_arg,
+        wakeword_model_path_arg,
         debug_arg,
         monitor_update_interval_arg,
         monitor_show_details_arg,
         asr_node,
         monitor_process,
+        monitor_process_details,
     ])

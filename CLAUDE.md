@@ -41,7 +41,7 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 |--------|------|
 | `VADBase` | VAD抽象基底クラス。`process_frame(bytes) -> (event, frames)` を定義 |
 | `SileroVadProcessor` | PyTorch + Silero VADで発話区間検出。`speech_start/speech_cont/speech_stop` を返す |
-| `OpenWakeWordProcessor` | OpenWakeWordでウェイクワード検出後、Silero VADで発話終了を検出 |
+| `LiveKitWakeWordProcessor` | livekit-wakewordでウェイクワード検出後、Silero VADで発話終了を検出 |
 | `ASRBase` | ASR抽象基底クラス。`run()` を定義 |
 | `GoogleCloudASR` | ストリーミング認識（`single_utterance=True`）。`_audio_buffer_queue` 経由で音声を受け取り別スレッドで応答処理 |
 | `WhisperASR` | バッチ認識。発話終了まで音声を `audio_buffer` に蓄積してまとめてデコード |
@@ -83,7 +83,7 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 - `SAMPLE_RATE = 16000` — WAVファイル入力時もこのレートを強制チェック
 - `FRAME_DURATION_MS = 30` — PyAudioのread_frame_sizeと連動
 - `SILERO_VAD_THRESHOLD = 0.5` — SileroVADの検出感度
-- `OPEN_WAKEWORD_SPEECH_TIMEOUT_SECONDS = 8.0` — ウェイクワード後の最大録音時間
+- `LIVEKIT_WAKEWORD_SPEECH_TIMEOUT_SECONDS = 8.0` — ウェイクワード後の最大録音時間
 
 ## デバッグモード
 
@@ -92,9 +92,22 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 - `speech_{timestamp}.wav` — 認識セッション単位の音声
 - `{timestamp}_label.txt` — VADラベル（タブ区切り：start, end, label）
 
-## OpenWakeWordモデル
+## livekit-wakeword のインストール
 
-`models/` ディレクトリに `.tflite` または `.onnx` 形式で配置。デフォルトは `hey_mycroft_v0.1.tflite`。利用可能モデル: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `timer`, `weather`。
+`livekit-wakeword` は `Requires-Python: >=3.11` と宣言されているが、推論に使う部分は Python 3.10 でも動作する（pure Python wheel）。ROS2 Humble（Python 3.10）へのインストールは以下で行う：
+
+```bash
+pip install livekit-wakeword --ignore-requires-python
+```
+
+`setup.py` の `install_requires` には含めない（通常の `pip install` でバージョン制約エラーになるため）。
+
+## ウェイクワードモデル
+
+`models/` ディレクトリに ONNX 形式で配置。デフォルトは `models/hey_mycroft_v0.1.onnx`。
+利用可能モデル: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `timer`, `weather`。
+モデルが存在しない場合は起動時に openWakeWord の GitHub リリース（v0.5.1）から自動ダウンロードされる。
+livekit-wakeword と openWakeWord は同じ embedding モデル（Google Speech Embedding）を使うため、openWakeWord 形式の ONNX モデルをそのまま livekit-wakeword で使用できる。
 
 ## 環境変数
 
