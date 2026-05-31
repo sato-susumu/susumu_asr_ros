@@ -1,19 +1,28 @@
 """OpenWakeWordPlugin のユニットテスト.
 
-テスト音声:
-  test/audio/hey_mycroft.wav          - ウェイクワードのみ (3.39s)
-  test/audio/hey_mycroft_with_speech.wav - ウェイクワード＋発話 (4.23s)
+テスト音声と期待するイベント列（独立インスタンスで計測済み）:
+
+  hey_mycroft_with_silence_4s.wav (7.39s):
+    1.984s speech_start, 2.016〜4.384s speech_cont x76, 4.416s speech_stop
+
+  hey_mycroft_with_speech.wav (4.23s):
+    1.408s speech_start, 1.440〜4.192s speech_cont x88（ファイル終端のため stop なし）
+
+  silence_3s.wav: イベントなし
 
 使い方:
   pytest test/test_vad_openwakeword.py -v
 """
 import pytest
 
-from conftest import feed_all, load_frames, silence_frames
+from conftest import feed_all_with_timing, load_frames
+from susumu_asr_ros.plugin_base import VADEvent
 
 
-def _make_plugin(**overrides):
-    """テスト用に setup() 済みの OpenWakeWordPlugin を返す."""
+def _fresh_plugin(**overrides):
+    """毎回クリーンな OpenWakeWordPlugin インスタンスを返す."""
+    pytest.importorskip('openwakeword', reason='openwakeword が未インストール')
+    pytest.importorskip('torch', reason='torch が未インストール')
     from susumu_asr_ros.vad_openwakeword import OpenWakeWordPlugin
     plugin = OpenWakeWordPlugin()
     params = {
@@ -31,62 +40,63 @@ def _make_plugin(**overrides):
     return plugin
 
 
-@pytest.fixture(scope='module')
-def oww_plugin():
-    pytest.importorskip('openwakeword', reason='openwakeword が未インストール')
-    pytest.importorskip('torch', reason='torch が未インストール')
-    return _make_plugin()
+class TestOpenWakeWordPluginTiming:
+    """各WAVファイルに対してイベントのタイミングをフレーム単位で検証する."""
 
-
-class TestOpenWakeWordPlugin:
-
-    def test_speech_start_detected_on_wakeword(self, oww_plugin):
-        """ウェイクワード音声で speech_start が検出されること."""
-        events = feed_all(oww_plugin, load_frames('hey_mycroft.wav'))
-        assert 'speech_start' in events, (
-            f'speech_start が検出されませんでした。検出イベント: {events}'
+    def test_hey_mycroft_with_silence_4s(self):
+        """ウェイクワード＋4秒無音: speech_start=1.984s, speech_stop=4.416s."""
+        timed = feed_all_with_timing(
+            _fresh_plugin(), load_frames('hey_mycroft_with_silence_4s.wav')
         )
+        events = [(ev, t) for ev, t in timed]
 
-    def test_speech_stop_after_wakeword(self, oww_plugin):
-        """ウェイクワード検出後、無音継続で speech_stop が返ること."""
-        events = feed_all(oww_plugin, load_frames('hey_mycroft.wav') + silence_frames(4.0))
-        assert 'speech_start' in events
-        assert 'speech_stop' in events
+        assert events[0] == (VADEvent.SPEECH_START, 1.984)
+        assert all(ev == VADEvent.SPEECH_CONT for ev, _ in events[1:-1])
+        assert events[-1] == (VADEvent.SPEECH_STOP, 4.416)
 
-    def test_speech_start_detected_with_speech(self, oww_plugin):
-        """ウェイクワード＋発話音声で speech_start が検出されること."""
-        events = feed_all(oww_plugin, load_frames('hey_mycroft_with_speech.wav'))
-        assert 'speech_start' in events, (
-            f'speech_start が検出されませんでした。検出イベント: {events}'
+    def test_hey_mycroft_with_speech_ends_in_cont(self):
+        """ウェイクワード＋発話: speech_start=1.408s、ファイル終端まで speech_cont が続く."""
+        timed = feed_all_with_timing(
+            _fresh_plugin(), load_frames('hey_mycroft_with_speech.wav')
         )
+        events = [(ev, t) for ev, t in timed]
 
-    def test_speech_cont_after_speech_start(self, oww_plugin):
-        """speech_start 後は speech_cont が返ること."""
-        events = feed_all(oww_plugin, load_frames('hey_mycroft_with_speech.wav'))
-        if 'speech_start' in events:
-            after = events[events.index('speech_start') + 1:]
-            assert 'speech_cont' in after, (
-                f'speech_start 後に speech_cont が返りませんでした。後続イベント: {after}'
-            )
+        assert events[0] == (VADEvent.SPEECH_START, 1.408)
+        assert all(ev == VADEvent.SPEECH_CONT for ev, _ in events[1:])
+        assert events[-1][1] == pytest.approx(4.192, abs=0.032)
 
-    def test_silence_not_detected(self, oww_plugin):
-        """無音で speech_start が検出されないこと."""
-        events = feed_all(oww_plugin, silence_frames(3.0))
-        assert 'speech_start' not in events, (
-            f'無音で speech_start が誤検出されました。検出イベント: {events}'
+    def test_silence_3s_no_events(self):
+        """3秒無音: イベントなし."""
+        timed = feed_all_with_timing(_fresh_plugin(), load_frames('silence_3s.wav'))
+        assert timed == [], f'無音でイベントが発生しました: {timed}'
+
+    def test_timeout(self):
+        """speech_timeout_sec=1.5s: speech_start=1.984s, speech_stop=3.584s (diff=1.600s)."""
+        timed = feed_all_with_timing(
+            _fresh_plugin(speech_timeout_sec=1.5, speech_end_min_sec=0.0),
+            load_frames('hey_mycroft_with_silence_4s.wav'),
         )
+        events = [(ev, t) for ev, t in timed]
 
-    def test_timeout_stops_speech(self):
-        """speech_timeout_sec を短く設定すると speech_stop が返ること."""
+        assert events[0] == (VADEvent.SPEECH_START, 1.984)
+        assert events[-1] == (VADEvent.SPEECH_STOP, 3.584)
+
+
+class TestOpenWakeWordPluginParams:
+
+    def test_default_params(self):
+        """デフォルトパラメータが正しく設定されること."""
         pytest.importorskip('openwakeword', reason='openwakeword が未インストール')
-        pytest.importorskip('torch', reason='torch が未インストール')
-        plugin = _make_plugin(speech_timeout_sec=1.5, speech_end_min_sec=0.0)
-        events = feed_all(plugin, load_frames('hey_mycroft.wav') + silence_frames(2.0))
-        assert 'speech_start' in events
-        assert 'speech_stop' in events
+        from susumu_asr_ros.vad_openwakeword import OpenWakeWordPlugin
+        plugin = OpenWakeWordPlugin()
+        plugin.load_params({})
+        assert plugin._threshold == 0.5
+        assert plugin._speech_timeout_sec == 8.0
+        assert plugin._speech_end_min_sec == 2.0
+        assert plugin._model_name == 'hey_mycroft_v0.1.tflite'
 
-    def test_params_loaded_correctly(self):
-        """load_params の値が正しく保持されること."""
+    def test_custom_params(self):
+        """カスタムパラメータが正しく保持されること."""
         pytest.importorskip('openwakeword', reason='openwakeword が未インストール')
         from susumu_asr_ros.vad_openwakeword import OpenWakeWordPlugin
         plugin = OpenWakeWordPlugin()

@@ -43,8 +43,8 @@ flowchart LR
     NODE([SusumuAsrNode\nROS2トピック配信])
 
     AR -->|frame| VAD
-    VAD -->|speech_start/cont/stop| SRS
-    SRS -->|start/audio/stop| AQ
+    VAD -->|VADEvent| SRS
+    SRS -->|ASRCommand| AQ
     AQ --> ASR
     ASR -->|result| RQ
     RQ --> SRS
@@ -56,19 +56,42 @@ flowchart LR
 ## 定数・基盤
 
 ### `constants.py`
-パイプライン全体で共有する定数を定義する。サンプリングレート・フレーム長・VAD/ASRのデフォルト閾値など。他モジュールはここからimportし、直接マジックナンバーを書かない。
+パイプライン全体で共有する定数を定義する。他モジュールはここからimportし、直接マジックナンバーを書かない。
+
+| 定数 | 値 | 意味 |
+|---|---|---|
+| `SAMPLE_RATE` | `16000` | サンプリングレート (Hz) |
+| `SAMPLE_WIDTH` | `2` | サンプル幅 (bytes) |
+| `CHANNELS` | `1` | チャンネル数 |
+| `FRAME_LENGTH_MS` | `30` | 1フレームの長さ (ms) |
+| `AUDIO_FRAME_SAMPLES` | `512` | AudioRecorder フレームサイズ / Silero VAD 最小サンプル数 |
+| `INT16_MAX` | `32768.0` | int16 PCM を -1.0〜1.0 に正規化する係数（2^15） |
+| `MS_PER_SEC` | `1000.0` | ms を秒に変換する係数 |
+| `VAD_SILERO_VAD` | `"silero_vad"` | VADプラグイン識別名 |
+| `VAD_OPENWAKEWORD` | `"openwakeword"` | VADプラグイン識別名 |
+| `ASR_GOOGLE_CLOUD` | `"google_cloud"` | ASRプラグイン識別名 |
+| `ASR_WHISPER` | `"whisper"` | ASRプラグイン識別名 |
 
 ### `plugin_base.py`
-プラグインの抽象基底クラスと、パラメータ宣言型を定義する。
+プラグインのインタフェース・列挙型・パラメータ宣言型を定義する。
 
-| クラス | 責務 |
+| クラス/型 | 責務 |
 |---|---|
+| `VADEvent` | VADプラグインが返すイベント名の列挙型（`StrEnum`） |
+| `ASRCommand` | `audio_queue` に送るコマンド名の列挙型（`StrEnum`） |
 | `PluginParam` | プラグインが宣言するパラメータ1件（名前・デフォルト値・説明）を保持するデータクラス |
-| `ASRPluginBase` | ASRプラグインのインタフェース |
-| `VADPluginBase` | VADプラグインのインタフェース |
+| `ASRPluginBase` | ASRプラグインの抽象基底クラス |
+| `VADPluginBase` | VADプラグインの抽象基底クラス |
 
 ### `plugin_loader.py`
-Pythonエントリポイント（`importlib.metadata`）を使い、プラグイン名からクラスを動的にロードする。`setup.py` に登録されたプラグインのみ発見対象となるため、サードパーティが独自プラグインを追加する際も本体コードの変更は不要。
+`PluginLoader` クラスがPythonエントリポイント（`importlib.metadata`）を使い、プラグイン名からクラスを動的にロードする。`setup.py` に登録されたプラグインのみ発見対象となるため、サードパーティが独自プラグインを追加する際も本体コードの変更は不要。
+
+| メソッド | 責務 |
+|---|---|
+| `PluginLoader.load_asr(name)` | 名前で ASR プラグインクラスを返す |
+| `PluginLoader.load_vad(name)` | 名前で VAD プラグインクラスを返す |
+| `PluginLoader.list_asr_plugins()` | 登録済み ASR プラグイン名一覧を返す |
+| `PluginLoader.list_vad_plugins()` | 登録済み VAD プラグイン名一覧を返す |
 
 ### `asr_base.py`
 `ASRBase` 抽象クラスのみを定義する薄いモジュール。後方互換のために残しており、新規コードは `ASRPluginBase` を使う。
@@ -119,7 +142,7 @@ def get_param_declarations(self) -> list[PluginParam]:
 
 ### VADプラグインのイベント仕様
 
-`process_frame(frame: bytes)` は `(event, frames)` のタプルを返す。`in_speech` フラグを持ち、`SpeechRecognitionSystem` から参照される。
+`process_frame(frame: bytes)` は `(VADEvent | None, list[bytes])` のタプルを返す。`in_speech` フラグを持ち、`SpeechRecognitionSystem` から参照される。
 
 ```mermaid
 flowchart LR
@@ -127,21 +150,22 @@ flowchart LR
     P([Speaking])
 
     S -->|"(None, [])"| S
-    S -->|"speech_start"| P
-    P -->|"speech_cont"| P
-    P -->|"speech_stop"| S
+    S -->|"VADEvent.SPEECH_START"| P
+    P -->|"VADEvent.SPEECH_CONT"| P
+    P -->|"VADEvent.SPEECH_STOP"| S
 ```
 
-| event | frames の内容 |
+| VADEvent | frames の内容 |
 |---|---|
-| `"speech_start"` | 発話開始前のバッファ＋現フレーム |
-| `"speech_cont"` | 現フレーム |
-| `"speech_stop"` | 現フレーム |
+| `SPEECH_START` | 発話開始前のバッファ＋現フレーム |
+| `SPEECH_CONT` | 現フレーム |
+| `SPEECH_STOP` | 現フレーム |
+| `SPEECH_TIMEOUT` | 現フレーム（タイムアウト時） |
 | `None` | `[]` |
 
 ### ASRプラグインのキュープロトコル
 
-`audio_queue` に渡すメッセージ形式は `(command: str, data: bytes)` 。`result_queue` から返すメッセージ形式は `(is_final: bool, text: str, start: float, end: float)` 。
+`audio_queue` に渡すメッセージ形式は `(ASRCommand, data: bytes)` 。`result_queue` から返すメッセージ形式は `(is_final: bool, text: str, start: float, end: float)` 。
 
 ```mermaid
 sequenceDiagram
@@ -150,16 +174,16 @@ sequenceDiagram
     participant A as ASRPlugin
     participant R as result_queue
 
-    S ->> Q : ("start", timestamp)
+    S ->> Q : (ASRCommand.START, timestamp)
     loop 発話中
-        S ->> Q : ("audio", pcm_bytes)
+        S ->> Q : (ASRCommand.AUDIO, pcm_bytes)
         A -->> R : (False, partial_text, start, None)
     end
-    S ->> Q : ("stop", timestamp)
+    S ->> Q : (ASRCommand.STOP, timestamp)
     A -->> R : (True, final_text, start, end)
 
     note over S,A : 終了時
-    S ->> Q : ("stop_all", None)
+    S ->> Q : (ASRCommand.STOP_ALL, None)
 ```
 
 ---
@@ -167,7 +191,7 @@ sequenceDiagram
 ## VADプラグイン
 
 ### `vad_silero.py`
-Silero VAD を用いた発話区間検出プラグイン。
+Silero VAD を用いた発話区間検出プラグイン。`SilenceAwareVADIterator`（内部クラス）が Silero の `VADIterator` をラップし、無音継続時間ベースの発話終了判定を行う。512サンプル未満のフレームは `ValueError` を送出する。
 
 ### `vad_openwakeword.py`
 OpenWakeWord によるウェイクワード検出 + Silero VAD による発話終了検出プラグイン。
@@ -193,8 +217,8 @@ faster-whisper によるバッチ認識プラグイン。
 
 | クラス | 責務 |
 |---|---|
-| `MicAudioRecorder` | PyAudio 経由でマイクからフレームを読み取る |
-| `WavAudioRecorder` | WAVファイルからフレームを読み取る |
+| `MicAudioRecorder` | PyAudio 経由でマイクからフレームを読み取る。`list_devices()` staticmethod でデバイス一覧を表示できる |
+| `WavAudioRecorder` | WAVファイルからフレームを読み取る。`simulate_realtime=True` でリアルタイム入力を模倣できる |
 
 **音声書き込みクラス（`AudioWriterBase` 派生）**
 
@@ -221,7 +245,7 @@ faster-whisper によるバッチ認識プラグイン。
 `SpeechRecognitionSystem` が VADPlugin・ASRPlugin・AudioRecorder・各Writerを受け取り、以下を担う。
 
 - AudioRecorder からフレームを読み取り VADPlugin に渡す
-- VADPlugin のイベントに応じて `audio_queue` にコマンドを送信する
+- `VADEvent` に応じて `ASRCommand` を `audio_queue` に送信する
 - `result_queue` から認識結果を受け取り `on_asr_event` コールバックで通知する
 - WAVファイル終端・Ctrl+C・シグナルによる終了処理を行う
 - `on_audio_level`・`on_wakeword_score`・`on_status` コールバックで補助情報を通知する
@@ -236,7 +260,7 @@ faster-whisper によるバッチ認識プラグイン。
 `SusumuAsrNode` が以下を担う。
 
 1. ROS2パラメータ `vad_plugin` / `asr_plugin` でプラグインを選択する
-2. `plugin_loader` でクラスをロード後、`{plugin_name}.{param_name}` 形式でROS2パラメータを宣言・取得し、プラグインに注入する
+2. `PluginLoader` でクラスをロード後、`_declare_plugin_params()` で `{plugin_name}.{param_name}` 形式のROS2パラメータを宣言・取得し、プラグインに注入する
 3. デバッグ用ライター・AudioRecorder を生成して `SpeechRecognitionSystem` を組み立てる
 4. 認識イベントを以下のトピックに配信する
 
@@ -250,4 +274,4 @@ faster-whisper によるバッチ認識プラグイン。
 ### `asr_monitor.py`
 **モニタリング用の独立ROS2ノード。**
 
-`/stt_event`・`/stt`・`/audio_level`・`/wakeword_score` をサブスクライブし、イベントログと音量バーをターミナルにリアルタイム表示する。`--stop-on` オプションで特定イベントを受信したら自動終了できるため、スクリプトやテストからの利用にも対応する。
+`/stt_event` をサブスクライブし、統計情報とイベント履歴をターミナルに表示する。`monitor_display_loop()` メソッドで継続的なリアルタイム表示を行う。`--once` / `--events` オプショ��で1回表示して終了することもできる。

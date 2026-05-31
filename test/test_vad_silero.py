@@ -1,85 +1,86 @@
 """SileroVADPlugin のユニットテスト.
 
-テスト音声:
-  test/audio/hey_mycroft.wav          - ウェイクワードのみ (3.39s)
-  test/audio/hey_mycroft_with_speech.wav - ウェイクワード＋発話 (4.23s)
+テスト音声と期待するイベント列（独立インスタンスで計測済み）:
+
+  hey_mycroft_with_silence_2s.wav (5.39s):
+    1.312s speech_start, 1.344〜3.328s speech_cont x63, 3.360s speech_stop
+
+  hey_mycroft_with_speech_with_silence_2s.wav (6.23s):
+    0.736s speech_start, 0.768〜3.648s speech_cont x92, 3.680s speech_stop
+
+  silence_3s.wav:    イベントなし
+  white_noise_3s.wav: イベントなし（振幅0.01）
 
 使い方:
   pytest test/test_vad_silero.py -v
 """
 import pytest
 
-from conftest import feed_all, load_frames, silence_frames, white_noise_frames
+from conftest import feed_all_with_timing, load_frames
+from susumu_asr_ros.plugin_base import VADEvent
 
 
-@pytest.fixture(scope='module')
-def silero_plugin():
+def _fresh_plugin(**params):
+    """毎回クリーンな SileroVADPlugin インスタンスを返す."""
     pytest.importorskip('torch', reason='torch が未インストール')
     from susumu_asr_ros.vad_silero import SileroVADPlugin
     plugin = SileroVADPlugin()
-    plugin.load_params({})
+    plugin.load_params(params)
     plugin.setup()
     return plugin
 
 
-class TestSileroVADPlugin:
+class TestSileroVADPluginTiming:
+    """各WAVファイルに対してイベントのタイミングをフレーム単位で検証する."""
 
-    def test_speech_start_detected_on_wakeword(self, silero_plugin):
-        """ウェイクワード音声で speech_start が検出されること."""
-        events = feed_all(silero_plugin, load_frames('hey_mycroft.wav'))
-        assert 'speech_start' in events, (
-            f'speech_start が検出されませんでした。検出イベント: {events}'
+    def test_hey_mycroft_with_silence_2s(self):
+        """ウェイクワード＋2秒無音: speech_start=1.312s, speech_stop=3.360s."""
+        timed = feed_all_with_timing(
+            _fresh_plugin(), load_frames('hey_mycroft_with_silence_2s.wav')
         )
+        events = [(ev, t) for ev, t in timed]
 
-    def test_speech_stop_detected_on_wakeword(self, silero_plugin):
-        """ウェイクワード音声＋無音で speech_stop が検出されること."""
-        events = feed_all(silero_plugin, load_frames('hey_mycroft.wav') + silence_frames(2.0))
-        assert 'speech_stop' in events, (
-            f'speech_stop が検出されませんでした。検出イベント: {events}'
+        assert events[0] == (VADEvent.SPEECH_START, 1.312)
+        assert all(ev == VADEvent.SPEECH_CONT for ev, _ in events[1:-1])
+        assert events[-1] == (VADEvent.SPEECH_STOP, 3.360)
+
+    def test_hey_mycroft_with_speech_with_silence_2s(self):
+        """ウェイクワード＋発話＋2秒無音: speech_start=0.736s, speech_stop=3.488s."""
+        timed = feed_all_with_timing(
+            _fresh_plugin(), load_frames('hey_mycroft_with_speech_with_silence_2s.wav')
         )
+        events = [(ev, t) for ev, t in timed]
 
-    def test_speech_start_and_stop_detected_with_speech(self, silero_plugin):
-        """ウェイクワード＋発話音声で speech_start と speech_stop が検出されること."""
-        events = feed_all(
-            silero_plugin,
-            load_frames('hey_mycroft_with_speech.wav') + silence_frames(2.0),
-        )
-        assert 'speech_start' in events
-        assert 'speech_stop' in events
+        assert events[0] == (VADEvent.SPEECH_START, 0.736)
+        assert all(ev == VADEvent.SPEECH_CONT for ev, _ in events[1:-1])
+        assert events[-1] == (VADEvent.SPEECH_STOP, 3.488)
 
-    def test_silence_not_detected(self, silero_plugin):
-        """無音では speech_start が検出されないこと."""
-        events = feed_all(silero_plugin, silence_frames(3.0))
-        assert 'speech_start' not in events, (
-            f'無音で speech_start が誤検出されました。検出イベント: {events}'
-        )
+    def test_silence_3s_no_events(self):
+        """3秒無音: イベントなし."""
+        timed = feed_all_with_timing(_fresh_plugin(), load_frames('silence_3s.wav'))
+        assert timed == [], f'無音でイベントが発生しました: {timed}'
 
-    def test_white_noise_not_detected(self):
-        """低振幅ホワイトノイズで speech_start が誤検出されないこと."""
+    def test_white_noise_3s_no_events(self):
+        """低振幅ホワイトノイズ(振幅0.01): イベントなし."""
+        timed = feed_all_with_timing(_fresh_plugin(), load_frames('white_noise_3s.wav'))
+        assert timed == [], f'ホワイトノイズでイベントが発生しました: {timed}'
+
+
+class TestSileroVADPluginParams:
+
+    def test_default_params(self):
+        """デフォルトパラメータが正しく設定されること."""
         pytest.importorskip('torch', reason='torch が未インストール')
         from susumu_asr_ros.vad_silero import SileroVADPlugin
         plugin = SileroVADPlugin()
         plugin.load_params({})
         plugin.setup()
-        events = feed_all(plugin, white_noise_frames(3.0))
-        assert 'speech_start' not in events, (
-            f'ホワイトノイズで speech_start が誤検出されました。検出イベント: {events}'
-        )
+        assert plugin._threshold == 0.5
+        assert plugin._silence_ms == 1000
+        assert plugin._pre_speech_ms == 300
 
-    def test_event_ordering(self, silero_plugin):
-        """speech_start の前に speech_cont や speech_stop が来ないこと."""
-        events = feed_all(silero_plugin, load_frames('hey_mycroft.wav') + silence_frames(2.0))
-        if 'speech_start' in events:
-            before = events[:events.index('speech_start')]
-            assert 'speech_cont' not in before
-            assert 'speech_stop' not in before
-
-    def test_params_override_threshold(self):
-        """load_params の値が setup() 後に反映されること."""
-        pytest.importorskip('torch', reason='torch が未インストール')
-        from susumu_asr_ros.vad_silero import SileroVADPlugin
-        plugin = SileroVADPlugin()
-        plugin.load_params({'threshold': 0.9, 'silence_threshold_ms': 500})
-        plugin.setup()
+    def test_custom_params(self):
+        """カスタムパラメータが setup() 後に反映されること."""
+        plugin = _fresh_plugin(threshold=0.9, silence_threshold_ms=500)
         assert plugin._threshold == 0.9
         assert plugin._silence_ms == 500
