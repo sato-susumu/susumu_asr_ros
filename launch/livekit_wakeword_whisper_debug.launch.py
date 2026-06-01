@@ -17,7 +17,7 @@ def generate_launch_description():
             description='ウェイクワードモデルフォルダ',
         ),
         DeclareLaunchArgument(
-            'whisper_model_name', default_value='large-v2',
+            'whisper_model_name', default_value='turbo',
             description='Whisper モデル名',
         ),
         DeclareLaunchArgument(

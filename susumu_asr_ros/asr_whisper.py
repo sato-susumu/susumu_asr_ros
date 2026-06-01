@@ -18,13 +18,13 @@ class WhisperASRPlugin(ASRPluginBase):
 
     def get_param_declarations(self) -> list[PluginParam]:
         return [
-            PluginParam('model_name', 'large-v2', 'Whisper モデル名'),
+            PluginParam('model_name', 'turbo', 'Whisper モデル名'),
             PluginParam('language_code', 'auto', '認識言語コード (auto / ja / en ...)'),
             PluginParam('device', 'auto', '推論デバイス (auto / cpu / cuda)'),
         ]
 
     def load_params(self, params: dict) -> None:
-        self._model_name = params.get('model_name', 'large-v2')
+        self._model_name = params.get('model_name', 'turbo')
         self._language_code = params.get('language_code', 'auto')
         self._device = params.get('device', 'auto')
 
