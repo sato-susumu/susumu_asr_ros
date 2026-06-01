@@ -6,6 +6,7 @@ from launch.substitutions import LaunchConfiguration
 import launch_ros.actions  # noqa: I201
 
 _DEBUG_DIR = '/home/taro/ros2_ws/src/susumu_asr_ros/launch/debug'
+_ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
 
 
 def generate_launch_description():
@@ -34,11 +35,18 @@ def generate_launch_description():
             'debug_dir', default_value=_DEBUG_DIR,
             description='デバッグ出力フォルダ',
         ),
+        DeclareLaunchArgument(
+            'env_file', default_value=_ENV_FILE,
+            description='.env ファイルのパス',
+        ),
         launch_ros.actions.Node(
             package='susumu_asr_ros',
             executable='susumu_asr_node',
             name='susumu_asr_node',
             output='screen',
+            additional_env={
+                'SUSUMU_ASR_ENV_FILE': LaunchConfiguration('env_file'),
+            },
             parameters=[{
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'passthrough',

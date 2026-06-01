@@ -19,11 +19,28 @@ git clone https://github.com/sato-susumu/susumu_asr_ros.git
 手動でインストールする場合:
 
 ```bash
-pip install pyaudio torch torchaudio google-cloud-speech faster-whisper click "numpy<2.0"
+pip install pyaudio torch torchaudio google-cloud-speech faster-whisper click "numpy<2.0" python-dotenv
 pip install livekit-wakeword --ignore-requires-python
 ```
 
-### 3. ビルド
+### 3. 環境変数の設定
+
+APIキーなどの秘密情報は `.env` ファイルで管理します。
+
+```bash
+cp .env.sample .env
+```
+
+`.env` を開き、使用する ASR プラグインに応じて値を設定してください。
+
+| 変数名 | 必要なプラグイン | 内容 |
+|--------|-----------------|------|
+| `GOOGLE_APPLICATION_CREDENTIALS` | `google_cloud` | Google Cloud 認証情報 JSON のパス |
+| `AMIVOICE_APP_KEY` | `amivoice` | AmiVoice ACP アプリケーションキー |
+
+> `.env` は `.gitignore` および `.claudeignore` に登録済みのため、Git コミットや Claude Code へのコンテキスト送信の対象外です。
+
+### 4. ビルド
 
 ```bash
 cd ~/ros2_ws
@@ -132,3 +149,4 @@ ros2 run susumu_asr_ros susumu_asr_node \
 - **ASR (Automatic Speech Recognition)**
   - [Google Cloud Speech-to-Text](https://cloud.google.com/speech-to-text)
   - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+  - [AmiVoice ACP](https://acp.amivoice.com/)

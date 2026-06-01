@@ -26,6 +26,7 @@ setup(
         'google-cloud-speech',
         'faster-whisper',
         'click',
+        'python-dotenv',
     ],
     zip_safe=True,
     maintainer='Sato Susumu',
@@ -42,6 +43,7 @@ setup(
         'susumu_asr_ros.asr_plugins': [
             'google_cloud = susumu_asr_ros.asr_google:GoogleCloudASRPlugin',
             'whisper = susumu_asr_ros.asr_whisper:WhisperASRPlugin',
+            'amivoice = susumu_asr_ros.asr_amivoice:AmiVoiceASRPlugin',
         ],
         'susumu_asr_ros.vad_plugins': [
             'silero_vad = susumu_asr_ros.vad_silero:SileroVADPlugin',

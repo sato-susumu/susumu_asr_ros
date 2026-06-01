@@ -6,6 +6,7 @@ import os
 import queue
 import threading
 
+from dotenv import load_dotenv
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -229,6 +230,7 @@ class SusumuAsrNode(Node):
 
 
 def main(args=None):
+    load_dotenv(os.environ.get('SUSUMU_ASR_ENV_FILE') or None)
     rclpy.init(args=args)
     node = SusumuAsrNode()
     try:

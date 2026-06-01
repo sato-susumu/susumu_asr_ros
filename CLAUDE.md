@@ -148,4 +148,4 @@ livekit-wakeword と openWakeWord は同じ embedding モデル（Google Speech 
 | 変数 | 用途 |
 |------|------|
 | `GOOGLE_APPLICATION_CREDENTIALS` | Google Cloud認証JSONのパス |
-| `CUDA_VISIBLE_DEVICES=""` | WhisperをCPUモードで実行 |
+| `AMIVOICE_APP_KEY` | AmiVoice ACP アプリケーションキー |

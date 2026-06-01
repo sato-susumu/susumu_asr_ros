@@ -1,4 +1,4 @@
-"""livekit-wakeword + Google Cloud ASR (デバッグモード)."""
+"""livekit-wakeword + AmiVoice ACP ASR (デバッグモード)."""
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
@@ -12,16 +12,16 @@ _ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
 def generate_launch_description():
     return launch.LaunchDescription([
         DeclareLaunchArgument(
-            'language_code', default_value='ja-JP',
-            description='Google Cloud ASR 言語コード',
-        ),
-        DeclareLaunchArgument(
             'model_name', default_value='hey_mycroft_v0.1.onnx',
             description='ウェイクワードモデルファイル名',
         ),
         DeclareLaunchArgument(
             'model_folder', default_value='models',
             description='ウェイクワードモデルフォルダ',
+        ),
+        DeclareLaunchArgument(
+            'engine', default_value='-a-general',
+            description='AmiVoice ACP 認識エンジン名',
         ),
         DeclareLaunchArgument(
             'input_device_index', default_value='-1',
@@ -50,14 +50,14 @@ def generate_launch_description():
             parameters=[{
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'livekit_wakeword',
-                'asr_plugin': 'google_cloud',
+                'asr_plugin': 'amivoice',
                 'input_device_index': LaunchConfiguration('input_device_index'),
                 'input_file': LaunchConfiguration('input_file'),
                 'debug': True,
                 'debug_dir': LaunchConfiguration('debug_dir'),
-                'google_cloud.language_code': LaunchConfiguration('language_code'),
                 'livekit_wakeword.model_name': LaunchConfiguration('model_name'),
                 'livekit_wakeword.model_folder': LaunchConfiguration('model_folder'),
+                'amivoice.engine': LaunchConfiguration('engine'),
             }],
         ),
     ])
