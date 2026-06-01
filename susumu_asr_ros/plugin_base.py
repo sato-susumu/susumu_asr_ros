@@ -168,6 +168,7 @@ class ASRPluginBase(ABC):
     """
 
     plugin_name: str = ''
+    extend_silence_on_wakeword: bool = True
 
     # setup() 後にセットされるキュー
     audio_queue: queue.Queue
@@ -235,6 +236,7 @@ class WakewordPluginBase(ABC):
     """
 
     plugin_name: str = ''
+    extend_silence_on_detected: bool = True
 
     def get_param_declarations(self) -> list[PluginParam]:
         """このプラグインが使うパラメータ一覧を返す。デフォルトは空."""

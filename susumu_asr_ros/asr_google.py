@@ -64,7 +64,7 @@ class GoogleCloudASRPlugin(ASRPluginBase):
             elif command == ASRCommand.STOP:
                 self._handle_stop(data)
             elif command == ASRCommand.STOP_ALL:
-                self._handle_stop_all()
+                self._handle_stop_all(data)
                 return
 
     def _handle_start(self, data: bytes) -> None:
@@ -99,10 +99,10 @@ class GoogleCloudASRPlugin(ASRPluginBase):
         else:
             self.logger.info("ストリーミング中ではない → 'stop' を無視")
 
-    def _handle_stop_all(self) -> None:
+    def _handle_stop_all(self, data: bytes) -> None:
         self.logger.info('stop_all受信 → スレッド終了処理')
         if self.call_active:
-            self._handle_stop(b'0.0')
+            self._handle_stop(data)
 
     def _streaming_recognize_loop(self) -> None:
         streaming_config = speech.StreamingRecognitionConfig(

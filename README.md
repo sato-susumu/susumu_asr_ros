@@ -92,7 +92,7 @@ ros2 launch susumu_asr_ros no_wakeword_whisper.launch.py
 | `asr_plugin`                        | string  | `"google_cloud"`             | `google_cloud` or `whisper`                                 |
 | `input_device_index`                | int     | `-1`                         | マイク入力のデバイスインデックス（-1 でシステムデフォルト） |
 | `input_file`                        | string  | `""`                         | WAV ファイルのパスを指定するとファイル入力に切り替わる      |
-| `simulate_realtime`                 | bool    | `False`                      | WAV ファイル入力時にリアルタイムを模倣して遅延を挿入する    |
+| `simulate_realtime`                 | bool    | `True`                       | WAV ファイル入力時にリアルタイムを模倣して遅延を挿入する    |
 | `debug`                             | bool    | `False`                      | 全音声 WAV 出力 & VAD ラベル出力を有効化                    |
 | `livekit_wakeword.model_name`       | string  | `"hey_mycroft_v0.1.onnx"`    | livekit-wakeword の ONNX モデルファイル名                   |
 | `livekit_wakeword.model_folder`     | string  | `"models"`                   | モデルファイルが置かれたディレクトリ                        |
@@ -113,13 +113,12 @@ ros2 run susumu_asr_ros susumu_asr_node \
     -p asr_plugin:=google_cloud
 ```
 
-WAVファイルから入力し、リアルタイムシミュレーションを ON にする:
+WAVファイルから入力する（リアルタイムシミュレーションはデフォルトで ON）:
 
 ```bash
 ros2 run susumu_asr_ros susumu_asr_node \
   --ros-args \
-    -p input_file:="path/to/sample.wav" \
-    -p simulate_realtime:=True
+    -p input_file:="path/to/sample.wav"
 ```
 
 ---

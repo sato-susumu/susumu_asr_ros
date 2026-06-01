@@ -138,11 +138,15 @@ class SileroVADPlugin(VADPluginBase):
         result = self._vad_it(audio_float32, return_seconds=False)
 
         if result and 'start' in result:
-            self.in_speech = True
-            return VADResult(VADEvent.VAD_START, list(self._pre_speech_buffer))
+            if not self.in_speech:
+                self.in_speech = True
+                return VADResult(VADEvent.VAD_START, list(self._pre_speech_buffer))
+            return VADResult(VADEvent.VAD_CONT, [frame])
         elif result and 'end' in result:
-            self.in_speech = False
-            return VADResult(VADEvent.VAD_END, [frame])
+            if self.in_speech:
+                self.in_speech = False
+                return VADResult(VADEvent.VAD_END, [frame])
+            return VADResult(VADEvent.SILENCE, [])
         else:
             if self.in_speech:
                 return VADResult(VADEvent.VAD_CONT, [frame])

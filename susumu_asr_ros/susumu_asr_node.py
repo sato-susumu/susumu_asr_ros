@@ -42,7 +42,7 @@ class SusumuAsrNode(Node):
         self.declare_parameter('asr_plugin', 'google_cloud')
         self.declare_parameter('input_device_index', -1)
         self.declare_parameter('input_file', '')
-        self.declare_parameter('simulate_realtime', False)
+        self.declare_parameter('simulate_realtime', True)
         self.declare_parameter('debug', False)
         self.declare_parameter('list_mic_devices', False)
 
@@ -107,12 +107,14 @@ class SusumuAsrNode(Node):
             os.makedirs(debug_dir, exist_ok=True)
             full_audio_path = f'{debug_dir}/{base_time_str}_audio_full.wav'
             label_text_path = f'{debug_dir}/{base_time_str}_label.txt'
+            log_path = f'{debug_dir}/{base_time_str}_log.txt'
             full_audio_writer = FullAudioWriter(full_audio_path)
             full_audio_writer.open()
             speech_audio_writer = SpeechAudioWriter(output_dir=debug_dir)
             label_writer = LabelWriter(label_text_path)
+            self._setup_file_logger(log_path)
             self.get_logger().info(
-                f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}'
+                f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}, ログ={log_path}'
             )
         else:
             full_audio_writer = DummyAudioWriter()
@@ -148,6 +150,7 @@ class SusumuAsrNode(Node):
             label_writer=label_writer,
             speech_audio_writer=speech_audio_writer,
             on_asr_event=self._on_asr_event,
+            on_stop=self._on_system_stop,
         )
 
         self._thread = threading.Thread(target=self._system.start, daemon=True)
@@ -169,6 +172,8 @@ class SusumuAsrNode(Node):
         return values
 
     def _on_asr_event(self, event: ASREventUnion):
+        if not rclpy.ok():
+            return
         msg = String()
         msg.data = json.dumps(asdict(event), ensure_ascii=False)
         self.pub_stt_event.publish(msg)
@@ -178,8 +183,36 @@ class SusumuAsrNode(Node):
             msg2.data = event.text
             self.pub_stt.publish(msg2)
 
+    def _setup_file_logger(self, log_path: str) -> None:
+        """rclpy の全ロガーにファイル出力を追加する."""
+        import rclpy.impl.rcutils_logger as rcutils_logger_module
+
+        log_file = open(log_path, 'w', encoding='utf-8')
+        self._log_file = log_file
+
+        original_log = rcutils_logger_module.RcutilsLogger.log
+
+        def patched_log(self_logger, message, severity, *args, **kwargs):
+            original_log(self_logger, message, severity, *args, **kwargs)
+            ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            log_file.write(f'{ts} [{severity.name}] [{self_logger.name}]: {message}\n')
+            log_file.flush()
+
+        rcutils_logger_module.RcutilsLogger.log = patched_log
+        self._original_log = original_log
+        self._rcutils_logger_module = rcutils_logger_module
+
+    def _on_system_stop(self):
+        if rclpy.ok():
+            rclpy.shutdown()
+
     def destroy_node(self):
         self.get_logger().info('SusumuAsrNode: destroy_node called')
+        self._system.stop_event.set()
+        self._thread.join(timeout=10.0)
+        if hasattr(self, '_original_log'):
+            self._rcutils_logger_module.RcutilsLogger.log = self._original_log
+            self._log_file.close()
         super().destroy_node()
 
 
@@ -189,10 +222,11 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('KeyboardInterrupt: shutdown.')
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

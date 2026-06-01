@@ -14,6 +14,7 @@ class WhisperASRPlugin(ASRPluginBase):
     """faster-whisper を用いた ASR プラグイン（発話終了時にまとめて認識）."""
 
     plugin_name = 'whisper'
+    extend_silence_on_wakeword = False
 
     def get_param_declarations(self) -> list[PluginParam]:
         return [
@@ -72,7 +73,7 @@ class WhisperASRPlugin(ASRPluginBase):
             elif command == ASRCommand.STOP:
                 self._handle_stop(data)
             elif command == ASRCommand.STOP_ALL:
-                self._handle_stop_all()
+                self._handle_stop_all(data)
                 return
 
     def _handle_start(self, data: bytes) -> None:
@@ -98,13 +99,14 @@ class WhisperASRPlugin(ASRPluginBase):
             self.call_active = False
             self.audio_buffer.clear()
 
-    def _handle_stop_all(self) -> None:
+    def _handle_stop_all(self, data: bytes) -> None:
         self.logger.info('stop_all受信 → ワーカー終了')
         if self.call_active and len(self.audio_buffer) > 0:
+            self._stop_time = float(data.decode())
             text = self._run_inference(self.audio_buffer)
             if text:
                 self.result_queue.put(
-                    ASRResult(True, text, self._start_time, end=None)
+                    ASRResult(True, text, self._start_time, self._stop_time)
                 )
 
     def _run_inference(self, audio_data: bytes) -> str:
