@@ -19,6 +19,7 @@ from susumu_asr_ros.audio_io import (
     MicAudioRecorder,
     SpeechAudioWriter,
     WavAudioRecorder,
+    WaveformImageWriter,
 )
 from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
 from susumu_asr_ros.plugin_base import ASREventUnion, AsrFinalResultEvent
@@ -44,6 +45,7 @@ class SusumuAsrNode(Node):
         self.declare_parameter('input_file', '')
         self.declare_parameter('simulate_realtime', True)
         self.declare_parameter('debug', False)
+        self.declare_parameter('debug_dir', './debug')
         self.declare_parameter('list_mic_devices', False)
 
         vad_name = self.get_parameter('vad_plugin').value
@@ -53,6 +55,7 @@ class SusumuAsrNode(Node):
         input_file = self.get_parameter('input_file').value or None
         simulate_realtime = self.get_parameter('simulate_realtime').value
         debug = self.get_parameter('debug').value
+        debug_dir = self.get_parameter('debug_dir').value
         list_mic = self.get_parameter('list_mic_devices').value
 
         self.get_logger().info(
@@ -103,23 +106,30 @@ class SusumuAsrNode(Node):
         # -------------------------------------------------------
         if debug:
             base_time_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-            debug_dir = './debug'
             os.makedirs(debug_dir, exist_ok=True)
             full_audio_path = f'{debug_dir}/{base_time_str}_audio_full.wav'
             label_text_path = f'{debug_dir}/{base_time_str}_label.txt'
+            image_path = f'{debug_dir}/{base_time_str}_waveform.png'
             log_path = f'{debug_dir}/{base_time_str}_log.txt'
             full_audio_writer = FullAudioWriter(full_audio_path)
             full_audio_writer.open()
             speech_audio_writer = SpeechAudioWriter(output_dir=debug_dir)
             label_writer = LabelWriter(label_text_path)
+            self._waveform_image_writer = WaveformImageWriter(
+                wav_path=full_audio_path,
+                label_path=label_text_path,
+                image_path=image_path,
+            )
             self._setup_file_logger(log_path)
             self.get_logger().info(
-                f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}, ログ={log_path}'
+                f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}'
+                f', 画像={image_path}, ログ={log_path}'
             )
         else:
             full_audio_writer = DummyAudioWriter()
             speech_audio_writer = DummySpeechAudioWriter()
             label_writer = DummyLabelWriter()
+            self._waveform_image_writer = None
 
         # -------------------------------------------------------
         # AudioRecorder
@@ -203,6 +213,8 @@ class SusumuAsrNode(Node):
         self._rcutils_logger_module = rcutils_logger_module
 
     def _on_system_stop(self):
+        if self._waveform_image_writer is not None:
+            self._waveform_image_writer.generate()
         if rclpy.ok():
             rclpy.shutdown()
 
