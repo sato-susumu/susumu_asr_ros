@@ -83,10 +83,12 @@ class AmiVoiceASRPlugin(ASRPluginBase):
     def get_param_declarations(self) -> list[PluginParam]:
         return [
             PluginParam('engine', '-a-general', '認識エンジン名'),
+            PluginParam('profile_words', '', 'ユーザー辞書 (表記 読み 形式、複数は | 区切り)'),
         ]
 
     def load_params(self, params: dict) -> None:
         self._engine = params.get('engine', '-a-general')
+        self._profile_words = params.get('profile_words', '')
 
     def setup(
         self,
@@ -114,6 +116,9 @@ class AmiVoiceASRPlugin(ASRPluginBase):
         self._wrp.setCodec(codec)
         self._wrp.setGrammarFileNames(self._engine)
         self._wrp.setAuthorization(self._app_key)
+        if self._profile_words:
+            self._wrp.setProfileWords(self._profile_words)
+            self.logger.info(f'ユーザー辞書設定: {self._profile_words}')
 
         self.call_active = False
         self._audio_buffer_queue: queue.Queue = queue.Queue()

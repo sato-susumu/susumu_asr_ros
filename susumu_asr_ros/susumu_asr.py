@@ -128,9 +128,9 @@ class SpeechRecognitionSystem:
                     time.sleep(0.01)
                     continue
 
+                self._fetch_results()
                 vad_result = self.vad_plugin.process_frame(frame)
                 self._handle_vad(vad_result, frame)
-                self._fetch_results()
                 self._update_current_time(frame)
                 if not isinstance(self.recorder, WavAudioRecorder):
                     time.sleep(0.03)
@@ -313,4 +313,5 @@ class SpeechRecognitionSystem:
         if self._should_extend_silence():
             self.vad_plugin.extend_silence_threshold(self.vad_plugin._silence_ms)
         if self._state == SRSState.IN_SPEECH:
+            self.audio_queue.put((ASRCommand.STOP, str(end).encode()))
             self._transition_to_idle(end)

@@ -39,14 +39,16 @@ AudioRecorder → VADPlugin → WakewordPlugin → audio_queue → ASR → resul
 
 ```
 IDLE
-  → [SPEECH_START] → BUFFERING
+  → [VAD_START] → BUFFERING
       VAD音声をバッファに蓄積しながら WakewordPlugin にフレームを渡す
   → [WAKEWORD_DETECTED] → IN_SPEECH
       VADの silence_threshold を延長（8秒）、バッファ先頭から ASR に送信開始
-  → [SPEECH_STOP in BUFFERING] → IDLE
+  → [VAD_END in BUFFERING] → IDLE
       ウェイクワード未検出のまま発話終了 → 音声を捨てる
-  → [SPEECH_STOP in IN_SPEECH] → IDLE
+  → [VAD_END in IN_SPEECH] → IDLE
       ASR に STOP 送信
+  → [ASR final result in IN_SPEECH] → IDLE
+      ASR が自律的に発話終了を検出した場合（AmiVoice等）も STOP 送信して IDLE へ
 ```
 
 ### 主要クラス
@@ -62,15 +64,16 @@ IDLE
 | `ASRPluginBase` | `plugin_base.py` | ASR抽象基底クラス。`run()` を定義 |
 | `GoogleCloudASRPlugin` | `asr_google.py` | ストリーミング認識（`single_utterance=True`）。別スレッドでレスポンス処理 |
 | `WhisperASRPlugin` | `asr_whisper.py` | バッチ認識。発話終了まで音声を蓄積してまとめてデコード |
+| `AmiVoiceASRPlugin` | `asr_amivoice.py` | AmiVoice ACP WebSocketストリーミング認識。公式 Wrp ライブラリ使用 |
 | `SpeechRecognitionSystem` | `susumu_asr.py` | メインループ。VAD・WakewordPlugin・ASRを協調させ `on_asr_event` コールバックで通知 |
 
 ### プラグイン組み合わせ
 
-| vad_plugin | wakeword_plugin | 用途 |
-|---|---|---|
-| `silero_vad` | `passthrough` | ウェイクワードなし常時認識 |
-| `silero_vad` | `livekit_wakeword` | livekit-wakewordでウェイクワード検出 |
-| `silero_vad` | `openwakeword` | OpenWakeWordでウェイクワード検出 |
+| vad_plugin | wakeword_plugin | asr_plugin | 用途 |
+|---|---|---|---|
+| `silero_vad` | `passthrough` | `google_cloud` / `whisper` / `amivoice` | ウェイクワードなし常時認識 |
+| `silero_vad` | `livekit_wakeword` | `google_cloud` / `whisper` / `amivoice` | livekit-wakewordでウェイクワード検出 |
+| `silero_vad` | `openwakeword` | `google_cloud` / `whisper` / `amivoice` | OpenWakeWordでウェイクワード検出 |
 
 ### スレッド構成
 
@@ -84,7 +87,7 @@ IDLE
 - `(ASRCommand.START, timestamp_bytes)` — 発話開始
 - `(ASRCommand.AUDIO, pcm_bytes)` — 音声データ
 - `(ASRCommand.STOP, timestamp_bytes)` — 発話終了
-- `(ASRCommand.STOP_ALL, None)` — シャットダウン
+- `(ASRCommand.STOP_ALL, timestamp_bytes)` — シャットダウン
 
 `result_queue` から返るメッセージ形式：`ASRResult(is_final, text, start, end)`（`end` は partial では `None`）
 
@@ -125,6 +128,8 @@ IDLE
 - `{timestamp}_audio_full.wav` — 全音声
 - `speech_{timestamp}.wav` — 認識セッション単位の音声
 - `{timestamp}_label.txt` — VADラベル（タブ区切り：start, end, label）
+- `{timestamp}_log.txt` — 全ログのファイル出力
+- `{timestamp}_waveform.png` — 波形画像
 
 ## livekit-wakeword のインストール
 
@@ -142,6 +147,14 @@ pip install livekit-wakeword --ignore-requires-python
 利用可能モデル: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `timer`, `weather`。
 モデルが存在しない場合は起動時に openWakeWord の GitHub リリース（v0.5.1）から自動ダウンロードされる。
 livekit-wakeword と openWakeWord は同じ embedding モデル（Google Speech Embedding）を使うため、openWakeWord 形式の ONNX モデルをそのまま livekit-wakeword で使用できる。
+
+## AmiVoice ユーザー辞書（profileWords）
+
+`amivoice.profile_words` パラメータで毎セッション送信される。フォーマットは AmiVoice ACP 公式仕様に準拠：
+
+- 1単語: `表記 読み`（スペース区切り）
+- 複数単語: `表記1 読み1|表記2 読み2`（`|` 区切り）
+- 例: `ヘイ、マイクロフト へいまいくろふと|今日 きょう`
 
 ## 環境変数
 

@@ -20,8 +20,12 @@ def generate_launch_description():
             description='ウェイクワードモデルフォルダ',
         ),
         DeclareLaunchArgument(
-            'engine', default_value='-a-general',
+            'amivoice_engine', default_value='-a-general',
             description='AmiVoice ACP 認識エンジン名',
+        ),
+        DeclareLaunchArgument(
+            'amivoice_profile_words', default_value='今日 きょう|ヘイ、マイクロフト へいまいくろふと',
+            description='ユーザー辞書 (表記 読み 形式、複数は | 区切り)',
         ),
         DeclareLaunchArgument(
             'input_device_index', default_value='-1',
@@ -57,7 +61,8 @@ def generate_launch_description():
                 'debug_dir': LaunchConfiguration('debug_dir'),
                 'livekit_wakeword.model_name': LaunchConfiguration('model_name'),
                 'livekit_wakeword.model_folder': LaunchConfiguration('model_folder'),
-                'amivoice.engine': LaunchConfiguration('engine'),
+                'amivoice.engine': LaunchConfiguration('amivoice_engine'),
+                'amivoice.profile_words': LaunchConfiguration('amivoice_profile_words'),
             }],
         ),
     ])
