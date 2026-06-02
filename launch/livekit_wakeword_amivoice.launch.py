@@ -1,12 +1,9 @@
-"""livekit-wakeword + AmiVoice ACP ASR (デバッグモード)."""
+"""livekit-wakeword + AmiVoice ACP ASR."""
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 import launch_ros.actions  # noqa: I201
-
-_DEBUG_DIR = '/home/taro/ros2_ws/src/susumu_asr_ros/launch/debug'
-_ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
 
 
 def generate_launch_description():
@@ -32,33 +29,20 @@ def generate_launch_description():
             description='マイク入力デバイスインデックス（-1 でシステムデフォルト）',
         ),
         DeclareLaunchArgument(
-            'input_file', default_value='',
-            description='WAVファイルパス（空文字でマイク入力）',
-        ),
-        DeclareLaunchArgument(
-            'debug_dir', default_value=_DEBUG_DIR,
-            description='デバッグ出力フォルダ',
-        ),
-        DeclareLaunchArgument(
-            'env_file', default_value=_ENV_FILE,
-            description='.env ファイルのパス',
+            'debug', default_value='false',
+            description='デバッグモード（音声ファイル出力）',
         ),
         launch_ros.actions.Node(
             package='susumu_asr_ros',
             executable='susumu_asr_node',
             name='susumu_asr_node',
             output='screen',
-            additional_env={
-                'SUSUMU_ASR_ENV_FILE': LaunchConfiguration('env_file'),
-            },
             parameters=[{
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'livekit_wakeword',
                 'asr_plugin': 'amivoice',
                 'input_device_index': LaunchConfiguration('input_device_index'),
-                'input_file': LaunchConfiguration('input_file'),
-                'debug': True,
-                'debug_dir': LaunchConfiguration('debug_dir'),
+                'debug': LaunchConfiguration('debug'),
                 'livekit_wakeword.model_name': LaunchConfiguration('model_name'),
                 'livekit_wakeword.model_folder': LaunchConfiguration('model_folder'),
                 'amivoice.engine': LaunchConfiguration('amivoice_engine'),

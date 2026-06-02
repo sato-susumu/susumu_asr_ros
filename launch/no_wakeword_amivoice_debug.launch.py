@@ -1,4 +1,4 @@
-"""livekit-wakeword + AmiVoice ACP ASR (デバッグモード)."""
+"""Silero VAD + AmiVoice ACP ASR (デバッグモード)."""
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
@@ -12,19 +12,11 @@ _ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
 def generate_launch_description():
     return launch.LaunchDescription([
         DeclareLaunchArgument(
-            'model_name', default_value='hey_mycroft_v0.1.onnx',
-            description='ウェイクワードモデルファイル名',
-        ),
-        DeclareLaunchArgument(
-            'model_folder', default_value='models',
-            description='ウェイクワードモデルフォルダ',
-        ),
-        DeclareLaunchArgument(
             'amivoice_engine', default_value='-a-general-dn',
             description='AmiVoice ACP 認識エンジン名',
         ),
         DeclareLaunchArgument(
-            'amivoice_profile_words', default_value='今日 きょう|ヘイ、マイクロフト へいまいくろふと',
+            'amivoice_profile_words', default_value='今日 きょう',
             description='ユーザー辞書 (表記 読み 形式、複数は | 区切り)',
         ),
         DeclareLaunchArgument(
@@ -53,14 +45,12 @@ def generate_launch_description():
             },
             parameters=[{
                 'vad_plugin': 'silero_vad',
-                'wakeword_plugin': 'livekit_wakeword',
+                'wakeword_plugin': 'passthrough',
                 'asr_plugin': 'amivoice',
                 'input_device_index': LaunchConfiguration('input_device_index'),
                 'input_file': LaunchConfiguration('input_file'),
                 'debug': True,
                 'debug_dir': LaunchConfiguration('debug_dir'),
-                'livekit_wakeword.model_name': LaunchConfiguration('model_name'),
-                'livekit_wakeword.model_folder': LaunchConfiguration('model_folder'),
                 'amivoice.engine': LaunchConfiguration('amivoice_engine'),
                 'amivoice.profile_words': LaunchConfiguration('amivoice_profile_words'),
             }],
