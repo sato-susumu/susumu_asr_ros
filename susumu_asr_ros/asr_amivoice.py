@@ -4,7 +4,7 @@ import os
 import queue
 import threading
 
-from rclpy.logging import get_logger
+from susumu_asr_ros.ros_logger import get_logger
 
 from susumu_asr_ros.com.amivoice.wrp.Wrp import Wrp
 from susumu_asr_ros.com.amivoice.wrp.WrpListener import WrpListener
@@ -14,7 +14,7 @@ from susumu_asr_ros.plugin_base import (
 )
 
 _ENV_APP_KEY = 'AMIVOICE_APP_KEY'
-_WS_URL = 'wss://acp-api.amivoice.com/v1/'
+_WS_URL = 'wss://acp-api.amivoice.com/v1/nolog/'
 _STREAM_END = object()
 
 

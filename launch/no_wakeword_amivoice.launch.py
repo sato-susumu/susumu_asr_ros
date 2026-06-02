@@ -1,4 +1,5 @@
 """Silero VAD + AmiVoice ACP ASR."""
+import os
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
@@ -9,7 +10,7 @@ import launch_ros.actions  # noqa: I201
 def generate_launch_description():
     return launch.LaunchDescription([
         DeclareLaunchArgument(
-            'amivoice_engine', default_value='-a-general-dn',
+            'amivoice_engine', default_value='-a-general',
             description='AmiVoice ACP 認識エンジン名',
         ),
         DeclareLaunchArgument(
@@ -30,6 +31,7 @@ def generate_launch_description():
             name='susumu_asr_node',
             output='screen',
             parameters=[{
+                'env_file': os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'),
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'passthrough',
                 'asr_plugin': 'amivoice',

@@ -26,6 +26,7 @@ setup(
         'google-cloud-speech',
         'faster-whisper',
         'click',
+        'loguru',
         'python-dotenv',
     ],
     zip_safe=True,

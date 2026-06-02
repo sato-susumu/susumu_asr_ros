@@ -1,5 +1,5 @@
 """ウェイクワード検出をスキップするパススループラグイン."""
-from rclpy.logging import get_logger
+from susumu_asr_ros.ros_logger import get_logger
 from susumu_asr_ros.constants import FRAME_LENGTH_MS, MS_PER_SEC
 from susumu_asr_ros.plugin_base import (
     PluginParam, WakewordEvent, WakewordPluginBase, WakewordResult,

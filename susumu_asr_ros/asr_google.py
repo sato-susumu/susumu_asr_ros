@@ -3,7 +3,7 @@ import queue
 import threading
 
 from google.cloud import speech
-from rclpy.logging import get_logger
+from susumu_asr_ros.ros_logger import get_logger
 
 from susumu_asr_ros.constants import SAMPLE_RATE
 from susumu_asr_ros.plugin_base import ASRCommand, ASRPluginBase, ASRResult, PluginParam

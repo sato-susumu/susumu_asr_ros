@@ -4,7 +4,7 @@ from enum import Enum
 import math
 
 import numpy as np
-from rclpy.logging import get_logger
+from susumu_asr_ros.ros_logger import get_logger
 from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES, FRAME_LENGTH_MS, INT16_MAX
 from susumu_asr_ros.plugin_base import PluginParam, VADEvent, VADPluginBase, VADResult
 import torch

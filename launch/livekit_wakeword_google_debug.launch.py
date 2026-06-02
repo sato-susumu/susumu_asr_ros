@@ -1,4 +1,5 @@
 """livekit-wakeword + Google Cloud ASR (デバッグモード)."""
+import os
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
@@ -48,6 +49,7 @@ def generate_launch_description():
                 'SUSUMU_ASR_ENV_FILE': LaunchConfiguration('env_file'),
             },
             parameters=[{
+                'env_file': os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'),
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'livekit_wakeword',
                 'asr_plugin': 'google_cloud',

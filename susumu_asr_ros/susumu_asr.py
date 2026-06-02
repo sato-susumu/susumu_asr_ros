@@ -5,7 +5,7 @@ import queue
 import threading
 import time
 
-from rclpy.logging import get_logger
+from susumu_asr_ros.ros_logger import get_logger
 
 from susumu_asr_ros.audio_io import (
     AudioRecorderBase,

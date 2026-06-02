@@ -1,4 +1,5 @@
 """Silero VAD + AmiVoice ACP ASR (デバッグモード)."""
+import os
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
@@ -12,7 +13,7 @@ _ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
 def generate_launch_description():
     return launch.LaunchDescription([
         DeclareLaunchArgument(
-            'amivoice_engine', default_value='-a-general-dn',
+            'amivoice_engine', default_value='-a-general',
             description='AmiVoice ACP 認識エンジン名',
         ),
         DeclareLaunchArgument(
@@ -44,6 +45,7 @@ def generate_launch_description():
                 'SUSUMU_ASR_ENV_FILE': LaunchConfiguration('env_file'),
             },
             parameters=[{
+                'env_file': os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'),
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'passthrough',
                 'asr_plugin': 'amivoice',
