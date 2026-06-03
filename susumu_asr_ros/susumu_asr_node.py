@@ -1,243 +1,221 @@
+"""ROS2 音声認識ノード（プラグインベース）."""
+from dataclasses import asdict
+from datetime import datetime
+import json
 import os
 import queue
 import threading
-from datetime import datetime
 
+from dotenv import load_dotenv
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from susumu_asr_ros.susumu_asr import (
-    SpeechRecognitionSystem,
-    SileroVadProcessor,
-    OpenWakeWordProcessor,
-    GoogleCloudASR,
-    MicAudioRecorder,
-    WavAudioRecorder,
-    FullAudioWriter,
-    LabelWriter,
+from susumu_asr_ros.ros_logger import setup_loguru
+
+from susumu_asr_ros.audio_io import (
     DummyAudioWriter,
     DummyLabelWriter,
-    list_microphone_devices,
-    WhisperASR, ASR_WHISPER, ASR_GOOGLE_CLOUD, VAD_SILERO_VAD, VAD_OPENWAKEWORD, SpeechAudioWriter,
     DummySpeechAudioWriter,
+    FullAudioWriter,
+    LabelWriter,
+    MicAudioRecorder,
+    SpeechAudioWriter,
+    WavAudioRecorder,
+    WaveformImageWriter,
 )
+from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
+from susumu_asr_ros.plugin_base import ASREventUnion, AsrFinalResultEvent
+from susumu_asr_ros.plugin_loader import PluginLoader
+from susumu_asr_ros.susumu_asr import SpeechRecognitionSystem
 
 
 class SusumuAsrNode(Node):
+
     def __init__(self):
-        super().__init__("susumu_asr_node")
+        super().__init__('susumu_asr_node')
 
-        # ===================================
-        # (A) Publisher は1つ。トピック名を "stt_event" にする
-        # ===================================
-        self.pub_stt_event = self.create_publisher(
-            String, 'stt_event', 10  # JSON イベント用
-        )
-        self.pub_stt = self.create_publisher(
-            String, 'stt', 10  # 確定結果文字列用
-        )
+        self.pub_stt_event = self.create_publisher(String, 'stt_event', 10)
+        self.pub_stt = self.create_publisher(String, 'stt', 10)
 
-        # ============================
-        # 1) パラメータ宣言
-        # ============================
-        # 端末から --ros-args -p param_name:=value で上書き可能
+        # -------------------------------------------------------
+        # フレームワーク共通パラメータ
+        # -------------------------------------------------------
+        self.declare_parameter('env_file', '')
+        self.declare_parameter('vad_plugin', 'silero_vad')
+        self.declare_parameter('wakeword_plugin', 'passthrough')
+        self.declare_parameter('asr_plugin', 'google_cloud')
+        self.declare_parameter('input_device_index', -1)
+        self.declare_parameter('input_file', '')
+        self.declare_parameter('simulate_realtime', True)
+        self.declare_parameter('debug', False)
+        self.declare_parameter('debug_dir', './debug')
+        self.declare_parameter('list_mic_devices', False)
 
-        self.declare_parameter("list_mic_devices", True)
-        # VADタイプ: "silero_vad" or "openwakeword"
-        self.declare_parameter("vad_type", "openwakeword")
-        # ASRタイプ: "google_cloud" or "vosk"
-        self.declare_parameter("asr_type", "google_cloud")
-        # Google Cloud の言語コードなどを指定
-        self.declare_parameter("language_code", "ja-JP")
-        # OpenWakeWordモデルフォルダ＆モデル名
-        self.declare_parameter("oww_model_folder", "models")
-        self.declare_parameter("oww_model_name", "hey_mycroft_v0.1.tflite")
+        env_file = self.get_parameter('env_file').value or None
+        load_dotenv(env_file)
 
-        # 入力デバイス (マイク) のインデックス
-        self.declare_parameter("input_device_index", None)
+        vad_name = self.get_parameter('vad_plugin').value
+        wakeword_name = self.get_parameter('wakeword_plugin').value
+        asr_name = self.get_parameter('asr_plugin').value
+        input_device_index = self.get_parameter('input_device_index').value
+        input_file = self.get_parameter('input_file').value or None
+        simulate_realtime = self.get_parameter('simulate_realtime').value
+        debug = self.get_parameter('debug').value
+        debug_dir = self.get_parameter('debug_dir').value
+        list_mic = self.get_parameter('list_mic_devices').value
 
-        # Whisper専用パラメータ
-        self.declare_parameter("whisper_model_name", "large-v2")
-        self.declare_parameter("whisper_language_code", "auto")  # "auto", "ja", "en", ...
-        self.declare_parameter("whisper_device", "auto")  # "auto", "cpu", "cuda"
-
-        # ============================
-        # デバッグ用
-        # ============================
-        # WAVファイルを使う場合 (指定があればWav, なければMic)
-        self.declare_parameter("input_file", None)
-        self.declare_parameter("simulate_realtime", False)
-
-        # デバッグモード (音声やラベルをファイル出力)
-        self.declare_parameter("debug", False)
-
-        self.get_logger().info("SusumuAsrNode: パラメータの宣言完了")
-
-        # ============================
-        # 2) パラメータ取得
-        # ============================
-        list_mic = self.get_parameter("list_mic_devices").value
-        vad_type = self.get_parameter("vad_type").value
-        asr_type = self.get_parameter("asr_type").value
-        language_code = self.get_parameter("language_code").value
-        oww_model_folder = self.get_parameter("oww_model_folder").value
-        oww_model_name = self.get_parameter("oww_model_name").value
-        input_device_index = self.get_parameter("input_device_index").value
-        input_file = self.get_parameter("input_file").value
-        simulate_realtime = self.get_parameter("simulate_realtime").value
-        debug = self.get_parameter("debug").value
-
-        # Whisper用のパラメータ取得
-        whisper_model_name = self.get_parameter("whisper_model_name").value
-        whisper_language_code = self.get_parameter("whisper_language_code").value
-        whisper_device = self.get_parameter("whisper_device").value
-
-        # ログ出力例
-        self.get_logger().info(
-             f"[Whisper Params] model={whisper_model_name}, "
-             f"lang={whisper_language_code}, device={whisper_device}"
-        )
-
-        # ============================
-        # 3) マイクデバイス一覧表示 (パラメータで指定された場合)
-        # ============================
-        if list_mic:
-            # マイクの一覧を表示する関数
-            self.get_logger().info("利用可能なマイクデバイス一覧を表示します。")
-            list_microphone_devices()
-
-        # ============================
-        # 4) デバッグ出力の準備
-        # ============================
+        # loguru を早期に設定してプラグイン初期化前からログが捕捉されるようにする
         if debug:
-            base_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            debug_dir = "./debug"
+            base_time_str = datetime.now().strftime('%Y%m%d_%H%M%S')
             os.makedirs(debug_dir, exist_ok=True)
+            log_path = f'{debug_dir}/{base_time_str}_log.txt'
+            setup_loguru(log_path)
+        else:
+            log_path = None
+            setup_loguru()
 
-            full_audio_path = f"{debug_dir}/{base_time_str}_audio_full.wav"
-            label_text_path = f"{debug_dir}/{base_time_str}_label.txt"
+        self.get_logger().info(
+            f'プラグイン: vad={vad_name}, wakeword={wakeword_name}, asr={asr_name}'
+        )
 
-            self.full_audio_writer = FullAudioWriter(full_audio_path)
-            self.full_audio_writer.open()
-            self.speech_audio_writer = SpeechAudioWriter(output_dir="debug")
+        if list_mic:
+            MicAudioRecorder.list_devices()
 
-            self.label_writer = LabelWriter(label_text_path)
+        # -------------------------------------------------------
+        # VAD プラグイン: ロード → パラメータ宣言・注入 → setup()
+        # -------------------------------------------------------
+        vad_cls = PluginLoader.load_vad(vad_name)
+        self._vad_plugin = vad_cls()
+        vad_params = self._declare_plugin_params(
+            vad_name, self._vad_plugin.get_param_declarations()
+        )
+        self.get_logger().info(f'VAD パラメータ ({vad_name}): {vad_params}')
+        self._vad_plugin.load_params(vad_params)
+        self._vad_plugin.setup()
 
+        # -------------------------------------------------------
+        # Wakeword プラグイン: ロード → パラメータ宣言・注入 → setup()
+        # -------------------------------------------------------
+        wakeword_cls = PluginLoader.load_wakeword(wakeword_name)
+        self._wakeword_plugin = wakeword_cls()
+        wakeword_params = self._declare_plugin_params(
+            wakeword_name, self._wakeword_plugin.get_param_declarations()
+        )
+        self.get_logger().info(f'Wakeword パラメータ ({wakeword_name}): {wakeword_params}')
+        self._wakeword_plugin.load_params(wakeword_params)
+        self._wakeword_plugin.setup()
+
+        # -------------------------------------------------------
+        # ASR プラグイン: ロード → パラメータ宣言・注入 → setup()
+        # -------------------------------------------------------
+        asr_cls = PluginLoader.load_asr(asr_name)
+        self._asr_plugin = asr_cls()
+        asr_params = self._declare_plugin_params(
+            asr_name, self._asr_plugin.get_param_declarations()
+        )
+        self.get_logger().info(f'ASR パラメータ ({asr_name}): {asr_params}')
+        self._asr_plugin.load_params(asr_params)
+        self._asr_plugin.setup(queue.Queue(), queue.Queue(), threading.Event())
+
+        # -------------------------------------------------------
+        # デバッグ用ライター
+        # -------------------------------------------------------
+        if debug:
+            full_audio_path = f'{debug_dir}/{base_time_str}_audio_full.wav'
+            label_text_path = f'{debug_dir}/{base_time_str}_label.txt'
+            image_path = f'{debug_dir}/{base_time_str}_waveform.png'
+            full_audio_writer = FullAudioWriter(full_audio_path)
+            full_audio_writer.open()
+            speech_audio_writer = SpeechAudioWriter(output_dir=debug_dir)
+            label_writer = LabelWriter(label_text_path)
+            self._waveform_image_writer = WaveformImageWriter(
+                wav_path=full_audio_path,
+                label_path=label_text_path,
+                image_path=image_path,
+            )
             self.get_logger().info(
-                f"デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}"
+                f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}'
+                f', 画像={image_path}, ログ={log_path}'
             )
         else:
-            self.full_audio_writer = DummyAudioWriter()
-            self.speech_audio_writer = DummySpeechAudioWriter()
-            self.label_writer = DummyLabelWriter()
+            full_audio_writer = DummyAudioWriter()
+            speech_audio_writer = DummySpeechAudioWriter()
+            label_writer = DummyLabelWriter()
+            self._waveform_image_writer = None
 
-        # ============================
-        # 5) AudioRecorder の生成
-        # ============================
+        # -------------------------------------------------------
+        # AudioRecorder
+        # -------------------------------------------------------
         if input_file:
-            # WAVファイルから入力
-            self.get_logger().info(f"WAV入力モード: file={input_file}")
-            self.recorder = WavAudioRecorder(
-                read_frame_size=512,
+            self.get_logger().info(f'WAV 入力モード: file={input_file}')
+            recorder = WavAudioRecorder(
+                read_frame_size=AUDIO_FRAME_SAMPLES,
                 input_file=input_file,
                 simulate_realtime=simulate_realtime,
             )
         else:
-            # マイク入力
-            self.get_logger().info("マイク入力モード")
-            self.recorder = MicAudioRecorder(
-                read_frame_size=512, input_device_index=input_device_index
+            idx = input_device_index if input_device_index >= 0 else None
+            self.get_logger().info(f'マイク入力モード: device_index={idx}')
+            recorder = MicAudioRecorder(
+                read_frame_size=AUDIO_FRAME_SAMPLES, input_device_index=idx
             )
 
-        # ============================
-        # 6) VAD モジュールの生成
-        # ============================
-        if vad_type == VAD_SILERO_VAD:
-            self.get_logger().info("VAD: SileroVadProcessor を使用します。")
-            self.vad_processor = SileroVadProcessor()
-        elif vad_type == VAD_OPENWAKEWORD:
-            self.get_logger().info("VAD: OpenWakeWordProcessor を使用します。")
-
-            if not os.path.exists(oww_model_folder):
-                os.makedirs(oww_model_folder)
-
-            self.vad_processor = OpenWakeWordProcessor(
-                model_folder=oww_model_folder, model_name=oww_model_name
-            )
-        else:
-            raise ValueError(f"未知のVADタイプ={vad_type}")
-
-        # ============================
-        # 7) ASR モジュールの生成
-        # ============================
-        self.audio_queue = queue.Queue()
-        self.result_queue = queue.Queue()
-        self.stop_event = threading.Event()
-
-        if asr_type == ASR_GOOGLE_CLOUD:
-            self.get_logger().info("ASR: GoogleCloudASR を使用します。")
-            self.asr = GoogleCloudASR(
-                audio_queue=self.audio_queue,
-                result_queue=self.result_queue,
-                stop_event=self.stop_event,
-                language_code=language_code,
-            )
-        elif asr_type == ASR_WHISPER:
-            self.get_logger().info("ASR: WhisperASR (faster-whisper) を使用します。")
-            self.asr = WhisperASR(
-                model_name=whisper_model_name,
-                whisper_language_code=whisper_language_code,
-                whisper_device=whisper_device,
-                audio_queue=self.audio_queue,
-                result_queue=self.result_queue,
-                stop_event=self.stop_event,
-            )
-        else:
-            raise ValueError(f"未知のASRタイプ={asr_type}")
-
-        # ============================
-        # 8) SpeechRecognitionSystem の生成
-        # ============================
-        self.system = SpeechRecognitionSystem(
-            vad_processor=self.vad_processor,
-            asr=self.asr,
-            recorder=self.recorder,
-            full_audio_writer=self.full_audio_writer,
-            label_writer=self.label_writer,
-            speech_audio_writer=self.speech_audio_writer,
-            # ===================================
-            # (B) イベントを受け取るコールバックを登録
-            # ===================================
-            on_asr_event=self.on_asr_event,
+        # -------------------------------------------------------
+        # SpeechRecognitionSystem
+        # -------------------------------------------------------
+        self._system = SpeechRecognitionSystem(
+            vad_plugin=self._vad_plugin,
+            wakeword_plugin=self._wakeword_plugin,
+            asr_plugin=self._asr_plugin,
+            recorder=recorder,
+            full_audio_writer=full_audio_writer,
+            label_writer=label_writer,
+            speech_audio_writer=speech_audio_writer,
+            on_asr_event=self._on_asr_event,
+            on_stop=self._on_system_stop,
         )
 
-        # スレッドで音声ループを開始
-        self.thread = threading.Thread(target=self.system.start, daemon=True)
-        self.thread.start()
+        self._thread = threading.Thread(target=self._system.start, daemon=True)
+        self._thread.start()
+        self.get_logger().info('SusumuAsrNode: 初期化完了')
 
-        self.get_logger().info("SusumuAsrNode: 初期化完了")
+    def _declare_plugin_params(self, prefix: str, declarations) -> dict:
+        """
+        プラグインのパラメータ宣言をノードに登録し、値を返す.
 
-    def on_asr_event(self, event_dict: dict):
-        """音声認識システムからのイベントを受け取り、JSON と文字列結果をそれぞれ配信する"""
-        import json
+        ROS2 パラメータ名は "{prefix}.{param_name}" 形式。
+        launch ファイルや --ros-args から上書き可能。
+        """
+        values = {}
+        for decl in declarations:
+            ros_name = f'{prefix}.{decl.name}'
+            self.declare_parameter(ros_name, decl.default)
+            values[decl.name] = self.get_parameter(ros_name).value
+        return values
 
-        # JSON イベントを配信
+    def _on_asr_event(self, event: ASREventUnion):
+        if not rclpy.ok():
+            return
         msg = String()
-        msg.data = json.dumps(event_dict, ensure_ascii=False)
+        msg.data = json.dumps(asdict(event), ensure_ascii=False)
         self.pub_stt_event.publish(msg)
 
-        # 確定した場合のみ、最終結果の文字列を配信
-        if event_dict.get('event_type') == 'final_result':
-            text = event_dict.get('text', '')
-            if text:
-                msg2 = String()
-                msg2.data = text
-                self.pub_stt.publish(msg2)
+        if isinstance(event, AsrFinalResultEvent) and event.text:
+            msg2 = String()
+            msg2.data = event.text
+            self.pub_stt.publish(msg2)
+
+    def _on_system_stop(self):
+        if self._waveform_image_writer is not None:
+            self._waveform_image_writer.generate()
+        if rclpy.ok():
+            rclpy.shutdown()
 
     def destroy_node(self):
-        # ノード破棄時に、システム側の終了処理を進めたい場合はここで何かしてもOK
-        self.get_logger().info("SusumuAsrNode: destroy_node called")
+        self.get_logger().info('SusumuAsrNode: destroy_node called')
+        self._system.stop_event.set()
+        self._thread.join(timeout=10.0)
         super().destroy_node()
 
 
@@ -247,11 +225,12 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("KeyboardInterrupt: shutdown.")
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

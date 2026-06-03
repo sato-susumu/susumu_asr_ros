@@ -1,0 +1,15 @@
+[lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, UP: pyupgrade, B: flake8-bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # 行長はプロジェクト既存の慣習に従う
+]
+exclude = ["build/"]
+
+[lint.per-file-ignores]
+"launch/*.py" = [
+    "INP001",  # launch/ は implicit namespace package で問題なし
+    "EXE002",  # launch ファイルに shebang は不要
+    "I001",    # launch ファイルの import 順はそのまま
+]
+"test/conftest.py" = ["INP001"]

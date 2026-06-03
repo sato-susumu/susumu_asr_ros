@@ -31,59 +31,96 @@ python -m pytest test/test_asr.py::test_1 -v
 ### データフロー
 
 ```
-AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → SusumuAsrNode
+AudioRecorder → VADPlugin → WakewordPlugin → audio_queue → ASR → result_queue → SusumuAsrNode
 (MicAudioRecorder / WavAudioRecorder)
 ```
 
-### 主要クラス（`susumu_asr_ros/susumu_asr.py`）
+### SpeechRecognitionSystem の状態機械
 
-| クラス | 役割 |
-|--------|------|
-| `VADBase` | VAD抽象基底クラス。`process_frame(bytes) -> (event, frames)` を定義 |
-| `SileroVadProcessor` | PyTorch + Silero VADで発話区間検出。`speech_start/speech_cont/speech_stop` を返す |
-| `OpenWakeWordProcessor` | OpenWakeWordでウェイクワード検出後、Silero VADで発話終了を検出 |
-| `ASRBase` | ASR抽象基底クラス。`run()` を定義 |
-| `GoogleCloudASR` | ストリーミング認識（`single_utterance=True`）。`_audio_buffer_queue` 経由で音声を受け取り別スレッドで応答処理 |
-| `WhisperASR` | バッチ認識。発話終了まで音声を `audio_buffer` に蓄積してまとめてデコード |
-| `SpeechRecognitionSystem` | メインループ。`on_asr_event` コールバックで認識結果をROS2ノードへ通知 |
+```
+IDLE
+  → [VAD_START] → BUFFERING
+      VAD音声をバッファに蓄積しながら WakewordPlugin にフレームを渡す
+  → [WAKEWORD_DETECTED] → IN_SPEECH
+      VADの silence_threshold を延長（8秒）、バッファ先頭から ASR に送信開始
+  → [VAD_END in BUFFERING] → IDLE
+      ウェイクワード未検出のまま発話終了 → 音声を捨てる
+  → [VAD_END in IN_SPEECH] → IDLE
+      ASR に STOP 送信
+  → [ASR final result in IN_SPEECH] → IDLE
+      ASR が自律的に発話終了を検出した場合（AmiVoice等）も STOP 送信して IDLE へ
+```
+
+### 主要クラス
+
+| クラス | ファイル | 役割 |
+|--------|----------|------|
+| `VADPluginBase` | `plugin_base.py` | VAD抽象基底クラス。`process_frame(bytes) -> VADResult`、`extend_silence_threshold()` を定義 |
+| `SileroVADPlugin` | `vad_silero.py` | PyTorch + Silero VADで発話区間検出 |
+| `WakewordPluginBase` | `plugin_base.py` | ウェイクワード検出抽象基底クラス。`process_frame(bytes) -> WakewordResult`、`reset()` を定義 |
+| `PassthroughWakewordPlugin` | `wakeword_passthrough.py` | ウェイクワードをスキップ。delay_sec 後に DETECTED を返す（SileroVAD単体モード用） |
+| `LivekitWakewordPlugin` | `wakeword_livekit.py` | livekit-wakeword（ONNX）でウェイクワード検出 |
+| `OpenWakewordPlugin` | `wakeword_openwakeword.py` | OpenWakeWord（tflite）でウェイクワード検出 |
+| `ASRPluginBase` | `plugin_base.py` | ASR抽象基底クラス。`run()` を定義 |
+| `GoogleCloudASRPlugin` | `asr_google.py` | ストリーミング認識（`single_utterance=True`）。別スレッドでレスポンス処理 |
+| `WhisperASRPlugin` | `asr_whisper.py` | バッチ認識。発話終了まで音声を蓄積してまとめてデコード |
+| `AmiVoiceASRPlugin` | `asr_amivoice.py` | AmiVoice ACP WebSocketストリーミング認識。公式 Wrp ライブラリ使用 |
+| `SpeechRecognitionSystem` | `susumu_asr.py` | メインループ。VAD・WakewordPlugin・ASRを協調させ `on_asr_event` コールバックで通知 |
+
+### プラグイン組み合わせ
+
+| vad_plugin | wakeword_plugin | asr_plugin | 用途 |
+|---|---|---|---|
+| `silero_vad` | `passthrough` | `google_cloud` / `whisper` / `amivoice` | ウェイクワードなし常時認識 |
+| `silero_vad` | `livekit_wakeword` | `google_cloud` / `whisper` / `amivoice` | livekit-wakewordでウェイクワード検出 |
+| `silero_vad` | `openwakeword` | `google_cloud` / `whisper` / `amivoice` | OpenWakeWordでウェイクワード検出 |
 
 ### スレッド構成
 
-- **VADスレッド（メインスレッド内ループ）**: フレームを読み取り、VADに通す
+- **VADスレッド（メインスレッド内ループ）**: フレームを読み取り、VAD → Wakeword → ASRへ通す
 - **ASRスレッド（`asr.run()`）**: `audio_queue` からコマンド（`start/audio/stop/stop_all`）を受け取って認識処理
 - **Google ASR内部スレッド（`_streaming_recognize_loop`）**: ストリーミングAPIのレスポンスを非同期処理
 
 ### キュー通信プロトコル
 
-`audio_queue` に渡すメッセージ形式：`(command: str, data: bytes)`
-- `("start", timestamp_bytes)` — 発話開始
-- `("audio", pcm_bytes)` — 音声データ
-- `("stop", timestamp_bytes)` — 発話終了
-- `("stop_all", None)` — シャットダウン
+`audio_queue` に渡すメッセージ形式：`(ASRCommand, data: bytes)`
+- `(ASRCommand.START, timestamp_bytes)` — 発話開始
+- `(ASRCommand.AUDIO, pcm_bytes)` — 音声データ
+- `(ASRCommand.STOP, timestamp_bytes)` — 発話終了
+- `(ASRCommand.STOP_ALL, timestamp_bytes)` — シャットダウン
 
-`result_queue` から返るメッセージ形式：`(is_final: bool, text: str, start: float, end: float)`
+`result_queue` から返るメッセージ形式：`ASRResult(is_final, text, start, end)`（`end` は partial では `None`）
+
+### `/stt_event` イベント一覧
+
+| `event_type` | 型 | フィールド |
+|---|---|---|
+| `vad_speech_start` | `VadStartEvent` | `start` |
+| `vad_speech_stop` | `VadStopEvent` | `start`, `end` |
+| `ww_listening_started` | `WakewordListeningStartedEvent` | `start` |
+| `ww_detected` | `WakewordDetectedEvent` | `start`, `score` |
+| `asr_partial_result` | `AsrPartialResultEvent` | `start`, `text` |
+| `asr_final_result` | `AsrFinalResultEvent` | `start`, `end`, `text` |
 
 ### ROS2ノード（`susumu_asr_ros/susumu_asr_node.py`）
 
-`SusumuAsrNode.__init__` でVAD・ASR・録音の各モジュールを組み立て、`system.start()` を別スレッドで起動する。認識イベントは `on_asr_event` コールバック経由で受け取り、以下のトピックに配信する。
+`SusumuAsrNode.__init__` でVAD・Wakeword・ASR・録音の各モジュールを組み立て、`system.start()` を別スレッドで起動する。認識イベントは `on_asr_event` コールバック経由で受け取り、以下のトピックに配信する。
 
 | トピック | 型 | 内容 |
 |----------|----|------|
-| `/stt_event` | `String` | JSON形式の全イベント（`wakeword_detected`, `partial_result`, `final_result`, `timeout`） |
-| `/stt` | `String` | `final_result` 時のテキストのみ |
+| `/stt_event` | `String` | JSON形式の全イベント（VAD由来: `vad_speech_start`, `vad_speech_stop` / ASR由来: `asr_partial_result`, `asr_final_result`, `asr_timeout`） |
+| `/stt` | `String` | `asr_final_result` 時のテキストのみ |
 
-### モニタリングノード（`susumu_asr_ros/asr_monitor.py`）
-
-`/stt_event` をサブスクライブして統計（検出回数・成功率・平均処理時間）をターミナル表示する独立ノード。
 
 ## 音声設定の定数
 
-`susumu_asr.py` 内の定数を変える場合：
+`constants.py` で定義。変更する場合はここを編集する。
 
 - `SAMPLE_RATE = 16000` — WAVファイル入力時もこのレートを強制チェック
-- `FRAME_DURATION_MS = 30` — PyAudioのread_frame_sizeと連動
-- `SILERO_VAD_THRESHOLD = 0.5` — SileroVADの検出感度
-- `OPEN_WAKEWORD_SPEECH_TIMEOUT_SECONDS = 8.0` — ウェイクワード後の最大録音時間
+- `FRAME_LENGTH_MS = 30` — PyAudioのread_frame_sizeと連動
+- `AUDIO_FRAME_SAMPLES = 512` — Silero VAD が要求する最小サンプル数
+
+プラグイン固有のしきい値（VAD検出感度・タイムアウト等）は launch ファイルまたは `--ros-args` のパラメータで上書きする。
 
 ## デバッグモード
 
@@ -91,14 +128,37 @@ AudioRecorder → VADProcessor → audio_queue → ASR → result_queue → Susu
 - `{timestamp}_audio_full.wav` — 全音声
 - `speech_{timestamp}.wav` — 認識セッション単位の音声
 - `{timestamp}_label.txt` — VADラベル（タブ区切り：start, end, label）
+- `{timestamp}_log.txt` — 全ログのファイル出力
+- `{timestamp}_waveform.png` — 波形画像
 
-## OpenWakeWordモデル
+## livekit-wakeword のインストール
 
-`models/` ディレクトリに `.tflite` または `.onnx` 形式で配置。デフォルトは `hey_mycroft_v0.1.tflite`。利用可能モデル: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `timer`, `weather`。
+`livekit-wakeword` は `Requires-Python: >=3.11` と宣言されているが、推論に使う部分は Python 3.10 でも動作する（pure Python wheel）。ROS2 Humble（Python 3.10）へのインストールは以下で行う：
+
+```bash
+pip install livekit-wakeword --ignore-requires-python
+```
+
+`setup.py` の `install_requires` には含めない（通常の `pip install` でバージョン制約エラーになるため）。
+
+## ウェイクワードモデル
+
+`models/` ディレクトリに ONNX 形式で配置。デフォルトは `models/hey_mycroft_v0.1.onnx`。
+利用可能モデル: `alexa`, `hey_jarvis`, `hey_mycroft`, `hey_rhasspy`, `timer`, `weather`。
+モデルが存在しない場合は起動時に openWakeWord の GitHub リリース（v0.5.1）から自動ダウンロードされる。
+livekit-wakeword と openWakeWord は同じ embedding モデル（Google Speech Embedding）を使うため、openWakeWord 形式の ONNX モデルをそのまま livekit-wakeword で使用できる。
+
+## AmiVoice ユーザー辞書（profileWords）
+
+`amivoice.profile_words` パラメータで毎セッション送信される。フォーマットは AmiVoice ACP 公式仕様に準拠：
+
+- 1単語: `表記 読み`（スペース区切り）
+- 複数単語: `表記1 読み1|表記2 読み2`（`|` 区切り）
+- 例: `ヘイ、マイクロフト へいまいくろふと|今日 きょう`
 
 ## 環境変数
 
 | 変数 | 用途 |
 |------|------|
 | `GOOGLE_APPLICATION_CREDENTIALS` | Google Cloud認証JSONのパス |
-| `CUDA_VISIBLE_DEVICES=""` | WhisperをCPUモードで実行 |
+| `AMIVOICE_APP_KEY` | AmiVoice ACP アプリケーションキー |

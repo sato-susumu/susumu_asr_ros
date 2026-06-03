@@ -19,7 +19,7 @@ import pytest
 @pytest.mark.flake8
 @pytest.mark.linter
 def test_flake8():
-    rc, errors = main_with_errors(argv=[])
+    rc, errors = main_with_errors(argv=['--exclude', 'build'])
     assert rc == 0, \
-        'Found %d code style errors / warnings:\n' % len(errors) + \
+        f'Found {len(errors)} code style errors / warnings:\n' + \
         '\n'.join(errors)
