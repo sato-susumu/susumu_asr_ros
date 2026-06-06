@@ -286,10 +286,25 @@ _SYSTEM_LABELS = {'vad_speech', 'ww_detected'}
 class WaveformImageWriter:
     """WAV波形とラベルを重ねた画像を生成するクラス."""
 
-    def __init__(self, wav_path: str, label_path: str, image_path: str):
+    def __init__(
+        self,
+        wav_path: str,
+        label_path: str,
+        image_path: str,
+        input_file: str = '',
+        vad_plugin: str = '',
+        wakeword_plugin: str = '',
+        asr_plugin: str = '',
+        notes: str = '',
+    ):
         self.wav_path = wav_path
         self.label_path = label_path
         self.image_path = image_path
+        self.input_file = input_file
+        self.vad_plugin = vad_plugin
+        self.wakeword_plugin = wakeword_plugin
+        self.asr_plugin = asr_plugin
+        self.notes = notes
         self.logger = get_logger('waveform_image_writer')
 
     def generate(self) -> None:
@@ -421,5 +436,21 @@ class WaveformImageWriter:
             )
 
         ax_wave.set_title(os.path.basename(self.wav_path))
+
+        info_parts = []
+        if self.input_file:
+            info_parts.append(f'input: {os.path.basename(self.input_file)}')
+        if self.vad_plugin:
+            info_parts.append(f'vad: {self.vad_plugin}')
+        if self.wakeword_plugin:
+            info_parts.append(f'wakeword: {self.wakeword_plugin}')
+        if self.asr_plugin:
+            info_parts.append(f'asr: {self.asr_plugin}')
+        if self.notes:
+            info_parts.append(f'note: {self.notes}')
+        if info_parts:
+            fig.text(0.01, 0.01, '  |  '.join(info_parts),
+                     ha='left', va='bottom', fontsize=8, color='#555555')
+
         plt.savefig(self.image_path, dpi=120, bbox_inches='tight')
         plt.close(fig)

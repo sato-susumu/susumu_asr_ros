@@ -1,10 +1,12 @@
 """Silero VAD + AmiVoice ACP ASR."""
-import os
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 import launch_ros.actions  # noqa: I201
+
+_DEBUG_DIR = '/home/taro/ros2_ws/src/susumu_asr_ros/debug'
+_ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
 
 
 def generate_launch_description():
@@ -31,7 +33,7 @@ def generate_launch_description():
             name='susumu_asr_node',
             output='screen',
             parameters=[{
-                'env_file': os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'),
+                'env_file': _ENV_FILE,
                 'vad_plugin': 'silero_vad',
                 'wakeword_plugin': 'passthrough',
                 'asr_plugin': 'amivoice',

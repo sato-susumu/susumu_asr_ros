@@ -1,10 +1,15 @@
-"""livekit-wakeword + Google Cloud ASR."""
-import os
+"""Silero VAD + Google Cloud ASR (WAVファイル デバッグ)."""
+
 import launch
 from launch import LaunchService
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 import launch_ros.actions  # noqa: I201
+
+
+_DEBUG_DIR = '/home/taro/ros2_ws/src/susumu_asr_ros/debug'
+_ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
+_WAV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/test/audio/multi_utterance_42s.wav'
 
 
 def generate_launch_description():
@@ -14,36 +19,34 @@ def generate_launch_description():
             description='Google Cloud ASR 言語コード',
         ),
         DeclareLaunchArgument(
-            'model_name', default_value='hey_mycroft_v0.1.onnx',
-            description='ウェイクワードモデルファイル名',
+            'input_file', default_value=_WAV_FILE,
+            description='入力WAVファイルパス',
         ),
         DeclareLaunchArgument(
-            'model_folder', default_value='models',
-            description='ウェイクワードモデルフォルダ',
+            'debug_dir', default_value=_DEBUG_DIR,
+            description='デバッグ出力フォルダ',
         ),
         DeclareLaunchArgument(
-            'input_device_index', default_value='-1',
-            description='マイク入力デバイスインデックス（-1 でシステムデフォルト）',
-        ),
-        DeclareLaunchArgument(
-            'debug', default_value='false',
-            description='デバッグモード（音声ファイル出力）',
+            'env_file', default_value=_ENV_FILE,
+            description='.env ファイルのパス',
         ),
         launch_ros.actions.Node(
             package='susumu_asr_ros',
             executable='susumu_asr_node',
             name='susumu_asr_node',
             output='screen',
+            additional_env={
+                'SUSUMU_ASR_ENV_FILE': LaunchConfiguration('env_file'),
+            },
             parameters=[{
-                'env_file': os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'),
+                'env_file': _ENV_FILE,
                 'vad_plugin': 'silero_vad',
-                'wakeword_plugin': 'livekit_wakeword',
+                'wakeword_plugin': 'passthrough',
                 'asr_plugin': 'google_cloud',
-                'input_device_index': LaunchConfiguration('input_device_index'),
-                'debug': LaunchConfiguration('debug'),
+                'input_file': LaunchConfiguration('input_file'),
+                'debug': True,
+                'debug_dir': LaunchConfiguration('debug_dir'),
                 'google_cloud.language_code': LaunchConfiguration('language_code'),
-                'livekit_wakeword.model_name': LaunchConfiguration('model_name'),
-                'livekit_wakeword.model_folder': LaunchConfiguration('model_folder'),
             }],
         ),
     ])

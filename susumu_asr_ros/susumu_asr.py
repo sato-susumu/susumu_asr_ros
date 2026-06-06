@@ -218,10 +218,14 @@ class SpeechRecognitionSystem:
         self.logger.info('VAD 発話開始 → BUFFERING')
         self._state = SRSState.BUFFERING
         self._speech_buffer = list(vad_result.frames)
-        self.vad_start = self.current_time
+        self.vad_start = (
+            vad_result.speech_start_sec
+            if vad_result.speech_start_sec is not None
+            else self.current_time
+        )
         self.wakeword_plugin.reset()
-        self.on_asr_event(VadStartEvent(start=self.current_time))
-        self.on_asr_event(WakewordListeningStartedEvent(start=self.current_time))
+        self.on_asr_event(VadStartEvent(start=self.vad_start))
+        self.on_asr_event(WakewordListeningStartedEvent(start=self.vad_start))
         self._feed_wakeword_frames(list(self._wakeword_prebuffer) + list(vad_result.frames))
         self._wakeword_prebuffer.clear()
 
@@ -235,10 +239,15 @@ class SpeechRecognitionSystem:
                 self.speech_audio_writer.write(f)
 
     def _on_vad_end(self, vad_result) -> None:
+        vad_end_time = (
+            vad_result.speech_end_sec
+            if vad_result.speech_end_sec is not None
+            else self.current_time
+        )
         if self._state == SRSState.BUFFERING:
             self.logger.info('VAD 発話終了（ウェイクワード未検出）→ 音声を捨てる')
             self._speech_buffer.clear()
-            self._transition_to_idle(self.current_time)
+            self._transition_to_idle(vad_end_time)
         elif self._state == SRSState.IN_SPEECH:
             for f in vad_result.frames:
                 self.audio_queue.put((ASRCommand.AUDIO, f))
@@ -246,9 +255,9 @@ class SpeechRecognitionSystem:
             self.logger.info('VAD 発話終了 → ASR STOP')
             if self._should_extend_silence():
                 self.vad_plugin.extend_silence_threshold(self.vad_plugin._silence_ms)
-            self.audio_queue.put((ASRCommand.STOP, str(self.current_time).encode()))
+            self.audio_queue.put((ASRCommand.STOP, str(vad_end_time).encode()))
             self.speech_audio_writer.close()
-            self._transition_to_idle(self.current_time)
+            self._transition_to_idle(vad_end_time)
 
     # ------------------------------------------------------------------
     # ウェイクワード処理

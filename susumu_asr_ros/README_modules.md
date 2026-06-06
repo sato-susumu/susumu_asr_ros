@@ -248,7 +248,7 @@ sequenceDiagram
 | `ASRCommand` | `audio_queue` に送るコマンド名の列挙型 |
 | `ASREventType` | `on_asr_event` コールバックのイベント種別の列挙型 |
 | `SRSState` | `SpeechRecognitionSystem` の内部状態の列挙型（`IDLE` / `BUFFERING` / `IN_SPEECH`） |
-| `VADResult` | `VADPlugin.process_frame()` の戻り値（`event: VADEvent`, `frames: list[bytes]`） |
+| `VADResult` | `VADPlugin.process_frame()` の戻り値（`event: VADEvent`, `frames: list[bytes]`, `speech_start_sec: float\|None`, `speech_end_sec: float\|None`）。`speech_start_sec` は `VAD_START` 時、`speech_end_sec` は `VAD_END` 時に VADIterator がサンプル数ベースで計算した精確なタイムスタンプ |
 | `WakewordResult` | `WakewordPlugin.process_frame()` の戻り値（`event: WakewordEvent`, `score: float`） |
 | `ASRResult` | `result_queue` から返る認識結果（`is_final`, `text`, `start`, `end`） |
 | `VadStartEvent` | VAD 発話開始イベント（`start`） |
@@ -383,7 +383,7 @@ sequenceDiagram
 ## VADプラグイン
 
 ### `vad_silero.py`
-Silero VAD を用いた発話区間検出プラグイン。`SilenceAwareVADIterator`（内部クラス）が Silero の `VADIterator` をラップし、無音継続時間ベースの発話終了判定を行う。512サンプル未満のフレームは `ValueError` を送出する。`extend_silence_threshold(ms)` で無音閾値を動的に変更できる。
+Silero VAD を用いた発話区間検出プラグイン。Silero の `VADIterator` に `min_silence_duration_ms` と `speech_pad_ms` を直接渡すことで無音判定とパディングをVADIterator本体に委ねる。`VADIterator` が返すサンプル数ベースの `start`/`end` を秒に変換して `VADResult.speech_start_sec` / `speech_end_sec` に格納するため、フレーム到着タイミングより精確なタイムスタンプが得られる。`extend_silence_threshold(ms)` で無音閾値を動的に変更できる。
 
 ```mermaid
 stateDiagram-v2
@@ -397,8 +397,9 @@ stateDiagram-v2
 | パラメータ | デフォルト | 説明 |
 |---|---|---|
 | `threshold` | `0.5` | VAD 検出しきい値 |
-| `silence_threshold_ms` | `1000` | 発話終了とみなす無音時間 (ms) |
+| `silence_threshold_ms` | `2000` | 発話終了とみなす無音時間 (ms) |
 | `pre_speech_ms` | `300` | 発話開始時に遡って送るバッファ時間 (ms) |
+| `speech_pad_ms` | `30` | 発話開始・終了タイムスタンプに付加するパディング (ms) |
 
 ---
 

@@ -56,7 +56,7 @@ IDLE
 | クラス | ファイル | 役割 |
 |--------|----------|------|
 | `VADPluginBase` | `plugin_base.py` | VAD抽象基底クラス。`process_frame(bytes) -> VADResult`、`extend_silence_threshold()` を定義 |
-| `SileroVADPlugin` | `vad_silero.py` | PyTorch + Silero VADで発話区間検出 |
+| `SileroVADPlugin` | `vad_silero.py` | PyTorch + Silero VADで発話区間検出。`VADIterator` がサンプル数ベースで計算した精確なタイムスタンプを `VADResult.speech_start_sec` / `speech_end_sec` に格納 |
 | `WakewordPluginBase` | `plugin_base.py` | ウェイクワード検出抽象基底クラス。`process_frame(bytes) -> WakewordResult`、`reset()` を定義 |
 | `PassthroughWakewordPlugin` | `wakeword_passthrough.py` | ウェイクワードをスキップ。delay_sec 後に DETECTED を返す（SileroVAD単体モード用） |
 | `LivekitWakewordPlugin` | `wakeword_livekit.py` | livekit-wakeword（ONNX）でウェイクワード検出 |

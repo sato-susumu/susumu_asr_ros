@@ -133,6 +133,10 @@ class SusumuAsrNode(Node):
                 wav_path=full_audio_path,
                 label_path=label_text_path,
                 image_path=image_path,
+                input_file=input_file or '',
+                vad_plugin=vad_name,
+                wakeword_plugin=wakeword_name,
+                asr_plugin=asr_name,
             )
             self.get_logger().info(
                 f'デバッグモード: 全音声={full_audio_path}, ラベル={label_text_path}'

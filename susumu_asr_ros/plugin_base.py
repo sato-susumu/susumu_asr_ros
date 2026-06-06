@@ -126,10 +126,14 @@ class VADResult:
     event が SILENCE のとき frames は空リスト.
     event が VAD_START のとき frames には発話開始前のバッファ＋現フレームが含まれる.
     それ以外のとき frames には現フレームのみが含まれる.
+    speech_start_sec: VAD が検出した発話開始タイムスタンプ（秒）。VAD_START のみ有効。
+    speech_end_sec:   VAD が検出した発話終了タイムスタンプ（秒）。VAD_END のみ有効。
     """
 
     event: VADEvent
     frames: list[bytes]
+    speech_start_sec: float | None = None
+    speech_end_sec: float | None = None
 
 
 @dataclass
