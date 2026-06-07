@@ -5,6 +5,42 @@
 
 VAD (音声区間検出)、ウェイクワード検出、ASR (音声認識) を組み合わせて、ROS2上で動作させるパッケージです。
 
+![waveform](docs/waveform.png)
+
+---
+
+## 特徴
+
+### 複数の ASR エンジンに対応
+
+用途やコストに合わせて音声認識エンジンを選択できます。
+
+| エンジン | プラグイン名 | 特徴 |
+|----------|-------------|------|
+| Google Cloud Speech-to-Text | `google_cloud` | ストリーミング認識。高精度なクラウド認識 |
+| faster-whisper | `whisper` | ローカル推論。オフライン環境や GPU 活用に |
+| AmiVoice ACP | `amivoice` | WebSocket ストリーミング。日本語特化の高精度認識 |
+
+### SileroVAD による音声区間検出
+
+[Silero VAD](https://github.com/snakers4/silero-vad) を使用して発話区間を自動検出します。無音区間を除いた音声だけを ASR エンジンに送ることで、誤認識を抑えながら継続的な認識を実現します。検出感度や無音判定時間はパラメータで調整できます。
+
+### ウェイクワード検出
+
+ウェイクワードを検出してから ASR を起動する構成に対応しています。常時認識（`passthrough`）のほか、[livekit-wakeword](https://github.com/livekit/livekit-wakeword) や [OpenWakeWord](https://github.com/dscripka/openWakeWord) を組み合わせることができます。
+
+### デバッグ機能
+
+`debug=True` で起動すると `./debug/` ディレクトリに以下のファイルを出力します。音声がどの区間で発話として検出され、それぞれの区間で何が認識されたかを事後確認できます。
+
+| 出力ファイル | 内容 |
+|-------------|------|
+| `*_waveform.png` | 波形と VAD 検出区間を重ねた画像（上の画像はこの出力例） |
+| `*_audio_full.wav` | セッション全体の録音 |
+| `speech_*.wav` | 発話区間ごとに切り出した音声 |
+| `*_label.txt` | 各区間の開始・終了時刻とラベル（タブ区切り） |
+| `*_log.txt` | 認識結果を含む全ログ |
+
 ---
 
 ## インストール & ビルド手順
