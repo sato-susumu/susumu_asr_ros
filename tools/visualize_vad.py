@@ -32,9 +32,9 @@ SPAN_COLOR = '#2ecc71'
 SPAN_ALPHA = 0.12
 
 _WAKEWORD_CLASSES = {
-    'passthrough':    'susumu_asr_ros.wakeword_passthrough:PassthroughWakewordPlugin',
-    'livekit_wakeword': 'susumu_asr_ros.wakeword_livekit:LivekitWakewordPlugin',
-    'openwakeword':   'susumu_asr_ros.wakeword_openwakeword:OpenWakewordPlugin',
+    'passthrough':    'susumu_asr.wakeword_passthrough:PassthroughWakewordPlugin',
+    'livekit_wakeword': 'susumu_asr.wakeword_livekit:LivekitWakewordPlugin',
+    'openwakeword':   'susumu_asr.wakeword_openwakeword:OpenWakewordPlugin',
 }
 
 
@@ -59,7 +59,7 @@ def load_wav(path: str):
 
 def build_vad_plugin(threshold: float):
     """Silero VAD プラグインを構築して返す."""
-    from susumu_asr_ros.vad_silero import SileroVADPlugin
+    from susumu_asr.vad_silero import SileroVADPlugin
     plugin = SileroVADPlugin()
     plugin.load_params({'threshold': threshold})
     plugin.setup()
@@ -90,7 +90,7 @@ def build_wakeword_plugin(plugin_name: str, model_folder: str,
 
 def build_asr_plugin(whisper_model: str, language: str, device: str):
     """Whisper ASR プラグインを構築して返す."""
-    from susumu_asr_ros.asr_whisper import WhisperASRPlugin
+    from susumu_asr.asr_whisper import WhisperASRPlugin
     plugin = WhisperASRPlugin()
     plugin.load_params({
         'model_name': whisper_model,
@@ -104,14 +104,14 @@ def build_asr_plugin(whisper_model: str, language: str, device: str):
 def run_pipeline(wav_path: str, vad_plugin, wakeword_plugin,
                  asr_plugin) -> CollectedEvents:
     """パイプラインを実行してイベントを収集する."""
-    from susumu_asr_ros.audio_io import WavAudioRecorder
-    from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
-    from susumu_asr_ros.plugin_base import (
+    from susumu_asr.audio_io import WavAudioRecorder
+    from susumu_asr.constants import AUDIO_FRAME_SAMPLES
+    from susumu_asr.plugin_base import (
         ASREventType, AsrFinalResultEvent, AsrPartialResultEvent,
         VadStartEvent, VadStopEvent,
         WakewordDetectedEvent, WakewordListeningStartedEvent,
     )
-    from susumu_asr_ros.susumu_asr import SpeechRecognitionSystem
+    from susumu_asr.susumu_asr import SpeechRecognitionSystem
 
     collected = CollectedEvents()
 

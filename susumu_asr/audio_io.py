@@ -11,9 +11,9 @@ import matplotlib.patches as mpatches  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pyaudio  # noqa: E402
-from susumu_asr_ros.ros_logger import get_logger  # noqa: E402
+from susumu_asr.ros_logger import get_logger  # noqa: E402
 
-from susumu_asr_ros.constants import (  # noqa: E402
+from susumu_asr.constants import (  # noqa: E402
     CHANNELS,
     FRAME_LENGTH_MS,
     MS_PER_SEC,

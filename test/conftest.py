@@ -22,7 +22,7 @@ def load_frames(filename: str) -> list[bytes]:
 
 def feed_all(plugin, frames: list[bytes]) -> list:
     """全フレームをプラグインに送り込み、SILENCE 以外のイベントのみ収集して返す."""
-    from susumu_asr_ros.plugin_base import VADEvent
+    from susumu_asr.plugin_base import VADEvent
     return [
         r.event for f in frames
         for r in [plugin.process_frame(f)]
@@ -32,7 +32,7 @@ def feed_all(plugin, frames: list[bytes]) -> list:
 
 def feed_all_with_timing(plugin, frames: list[bytes]) -> list[tuple]:
     """全フレームをプラグインに送り込み、SILENCE 以外の (event, 秒) リストを返す."""
-    from susumu_asr_ros.plugin_base import VADEvent
+    from susumu_asr.plugin_base import VADEvent
     frame_sec = FRAME_SAMPLES / SAMPLE_RATE
     result = []
     for i, frame in enumerate(frames):

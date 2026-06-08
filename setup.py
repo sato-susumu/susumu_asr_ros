@@ -3,7 +3,7 @@ import os
 
 from setuptools import find_packages, setup
 
-package_name = 'susumu_asr_ros'
+package_name = 'susumu_asr'
 
 setup(
     name=package_name,
@@ -39,20 +39,20 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'susumu_asr_node = susumu_asr_ros.susumu_asr_node:main',
+            'susumu_asr_node = susumu_asr.susumu_asr_node:main',
         ],
-        'susumu_asr_ros.asr_plugins': [
-            'google_cloud = susumu_asr_ros.asr_google:GoogleCloudASRPlugin',
-            'whisper = susumu_asr_ros.asr_whisper:WhisperASRPlugin',
-            'amivoice = susumu_asr_ros.asr_amivoice:AmiVoiceASRPlugin',
+        'susumu_asr.asr_plugins': [
+            'google_cloud = susumu_asr.asr_google:GoogleCloudASRPlugin',
+            'whisper = susumu_asr.asr_whisper:WhisperASRPlugin',
+            'amivoice = susumu_asr.asr_amivoice:AmiVoiceASRPlugin',
         ],
-        'susumu_asr_ros.vad_plugins': [
-            'silero_vad = susumu_asr_ros.vad_silero:SileroVADPlugin',
+        'susumu_asr.vad_plugins': [
+            'silero_vad = susumu_asr.vad_silero:SileroVADPlugin',
         ],
-        'susumu_asr_ros.wakeword_plugins': [
-            'passthrough = susumu_asr_ros.wakeword_passthrough:PassthroughWakewordPlugin',
-            'livekit_wakeword = susumu_asr_ros.wakeword_livekit:LivekitWakewordPlugin',
-            'openwakeword = susumu_asr_ros.wakeword_openwakeword:OpenWakewordPlugin',
+        'susumu_asr.wakeword_plugins': [
+            'passthrough = susumu_asr.wakeword_passthrough:PassthroughWakewordPlugin',
+            'livekit_wakeword = susumu_asr.wakeword_livekit:LivekitWakewordPlugin',
+            'openwakeword = susumu_asr.wakeword_openwakeword:OpenWakewordPlugin',
         ],
     },
 )

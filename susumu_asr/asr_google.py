@@ -3,10 +3,10 @@ import queue
 import threading
 
 from google.cloud import speech
-from susumu_asr_ros.ros_logger import get_logger
+from susumu_asr.ros_logger import get_logger
 
-from susumu_asr_ros.constants import SAMPLE_RATE
-from susumu_asr_ros.plugin_base import ASRCommand, ASRPluginBase, ASRResult, PluginParam
+from susumu_asr.constants import SAMPLE_RATE
+from susumu_asr.plugin_base import ASRCommand, ASRPluginBase, ASRResult, PluginParam
 
 # _audio_buffer_queue のストリーム終了シグナル
 _STREAM_END = object()

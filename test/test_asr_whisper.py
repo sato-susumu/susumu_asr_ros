@@ -14,7 +14,7 @@ import wave
 
 import pytest
 
-from susumu_asr_ros.plugin_base import ASRCommand
+from susumu_asr.plugin_base import ASRCommand
 
 AUDIO_DIR = os.path.join(os.path.dirname(__file__), 'audio')
 AUDIO_FILE = 'hey_mycroft_with_speech.wav'
@@ -28,7 +28,7 @@ def _load_raw(filename: str) -> bytes:
 
 def _make_plugin(model_name='small', language_code='ja', device='cpu'):
     """テスト用に setup() 済みの WhisperASRPlugin を返す."""
-    from susumu_asr_ros.asr_whisper import WhisperASRPlugin
+    from susumu_asr.asr_whisper import WhisperASRPlugin
     plugin = WhisperASRPlugin()
     plugin.load_params({
         'model_name': model_name,
@@ -66,7 +66,7 @@ class TestWhisperASRPluginParams:
 
     def test_default_params(self):
         """デフォルトパラメータが正しく設定されること."""
-        from susumu_asr_ros.asr_whisper import WhisperASRPlugin
+        from susumu_asr.asr_whisper import WhisperASRPlugin
         plugin = WhisperASRPlugin()
         plugin.load_params({})
         assert plugin._model_name == 'large-v2'
@@ -75,7 +75,7 @@ class TestWhisperASRPluginParams:
 
     def test_custom_params(self):
         """指定したパラメータが反映されること."""
-        from susumu_asr_ros.asr_whisper import WhisperASRPlugin
+        from susumu_asr.asr_whisper import WhisperASRPlugin
         plugin = WhisperASRPlugin()
         plugin.load_params({'model_name': 'small', 'language_code': 'ja', 'device': 'cpu'})
         assert plugin._model_name == 'small'
@@ -84,7 +84,7 @@ class TestWhisperASRPluginParams:
 
     def test_param_declarations(self):
         """get_param_declarations() が3件返すこと."""
-        from susumu_asr_ros.asr_whisper import WhisperASRPlugin
+        from susumu_asr.asr_whisper import WhisperASRPlugin
         decls = WhisperASRPlugin().get_param_declarations()
         names = [d.name for d in decls]
         assert 'model_name' in names

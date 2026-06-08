@@ -11,9 +11,9 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from susumu_asr_ros.ros_logger import setup_loguru
+from susumu_asr.ros_logger import setup_loguru
 
-from susumu_asr_ros.audio_io import (
+from susumu_asr.audio_io import (
     DummyAudioWriter,
     DummyLabelWriter,
     DummySpeechAudioWriter,
@@ -24,10 +24,10 @@ from susumu_asr_ros.audio_io import (
     WavAudioRecorder,
     WaveformImageWriter,
 )
-from susumu_asr_ros.constants import AUDIO_FRAME_SAMPLES
-from susumu_asr_ros.plugin_base import ASREventUnion, AsrFinalResultEvent
-from susumu_asr_ros.plugin_loader import PluginLoader
-from susumu_asr_ros.susumu_asr import SpeechRecognitionSystem
+from susumu_asr.constants import AUDIO_FRAME_SAMPLES
+from susumu_asr.plugin_base import ASREventUnion, AsrFinalResultEvent
+from susumu_asr.plugin_loader import PluginLoader
+from susumu_asr.susumu_asr import SpeechRecognitionSystem
 
 
 class SusumuAsrNode(Node):

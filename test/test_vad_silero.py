@@ -25,13 +25,13 @@ from conftest import (
 )
 import pytest
 
-from susumu_asr_ros.plugin_base import VADEvent
+from susumu_asr.plugin_base import VADEvent
 
 
 def _fresh_plugin(**params):
     """毎回クリーンな SileroVADPlugin インスタンスを返す."""
     pytest.importorskip('torch', reason='torch が未インストール')
-    from susumu_asr_ros.vad_silero import SileroVADPlugin
+    from susumu_asr.vad_silero import SileroVADPlugin
     plugin = SileroVADPlugin()
     plugin.load_params(params)
     plugin.setup()
@@ -133,7 +133,7 @@ class TestSileroVADPluginParams:
     def test_default_params(self):
         """デフォルトパラメータが正しく設定されること."""
         pytest.importorskip('torch', reason='torch が未インストール')
-        from susumu_asr_ros.vad_silero import SileroVADPlugin
+        from susumu_asr.vad_silero import SileroVADPlugin
         plugin = SileroVADPlugin()
         plugin.load_params({})
         plugin.setup()

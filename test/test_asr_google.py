@@ -10,15 +10,15 @@ import queue
 import threading
 from unittest.mock import MagicMock, patch
 
-from susumu_asr_ros.plugin_base import ASRCommand
+from susumu_asr.plugin_base import ASRCommand
 
 
 def _make_plugin(language_code='ja-JP'):
     """モック済みの GoogleCloudASRPlugin を返す."""
-    from susumu_asr_ros.asr_google import GoogleCloudASRPlugin
+    from susumu_asr.asr_google import GoogleCloudASRPlugin
     plugin = GoogleCloudASRPlugin()
     plugin.load_params({'language_code': language_code})
-    with patch('susumu_asr_ros.asr_google.speech.SpeechClient'):
+    with patch('susumu_asr.asr_google.speech.SpeechClient'):
         plugin.setup(queue.Queue(), queue.Queue(), threading.Event())
     return plugin
 
@@ -44,21 +44,21 @@ class TestGoogleCloudASRPluginParams:
 
     def test_default_language_code(self):
         """デフォルトの language_code が ja-JP であること."""
-        from susumu_asr_ros.asr_google import GoogleCloudASRPlugin
+        from susumu_asr.asr_google import GoogleCloudASRPlugin
         plugin = GoogleCloudASRPlugin()
         plugin.load_params({})
         assert plugin._language_code == 'ja-JP'
 
     def test_custom_language_code(self):
         """指定した language_code が反映されること."""
-        from susumu_asr_ros.asr_google import GoogleCloudASRPlugin
+        from susumu_asr.asr_google import GoogleCloudASRPlugin
         plugin = GoogleCloudASRPlugin()
         plugin.load_params({'language_code': 'en-US'})
         assert plugin._language_code == 'en-US'
 
     def test_param_declarations(self):
         """get_param_declarations() が language_code を含むこと."""
-        from susumu_asr_ros.asr_google import GoogleCloudASRPlugin
+        from susumu_asr.asr_google import GoogleCloudASRPlugin
         names = [d.name for d in GoogleCloudASRPlugin().get_param_declarations()]
         assert 'language_code' in names
 
@@ -70,10 +70,10 @@ class TestGoogleCloudASRPluginParams:
 
     def test_setup_creates_speech_client(self):
         """setup() で SpeechClient が生成されること."""
-        from susumu_asr_ros.asr_google import GoogleCloudASRPlugin
+        from susumu_asr.asr_google import GoogleCloudASRPlugin
         plugin = GoogleCloudASRPlugin()
         plugin.load_params({})
-        with patch('susumu_asr_ros.asr_google.speech.SpeechClient') as mock_cls:
+        with patch('susumu_asr.asr_google.speech.SpeechClient') as mock_cls:
             plugin.setup(queue.Queue(), queue.Queue(), threading.Event())
         mock_cls.assert_called_once()
 

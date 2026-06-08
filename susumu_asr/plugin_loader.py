@@ -1,15 +1,15 @@
 """エントリポイントベースのプラグインローダー."""
 from importlib.metadata import entry_points
 
-from susumu_asr_ros.plugin_base import ASRPluginBase, VADPluginBase, WakewordPluginBase
+from susumu_asr.plugin_base import ASRPluginBase, VADPluginBase, WakewordPluginBase
 
 
 class PluginLoader:
     """エントリポイントから ASR/VAD/Wakeword プラグインを動的にロードするクラス."""
 
-    _ASR_GROUP = 'susumu_asr_ros.asr_plugins'
-    _VAD_GROUP = 'susumu_asr_ros.vad_plugins'
-    _WAKEWORD_GROUP = 'susumu_asr_ros.wakeword_plugins'
+    _ASR_GROUP = 'susumu_asr.asr_plugins'
+    _VAD_GROUP = 'susumu_asr.vad_plugins'
+    _WAKEWORD_GROUP = 'susumu_asr.wakeword_plugins'
 
     @staticmethod
     def _load_eps(group: str) -> dict:

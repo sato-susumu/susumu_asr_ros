@@ -17,7 +17,7 @@ livekit と openwakeword の検出タイミングの差:
 from conftest import load_frames
 import pytest
 
-from susumu_asr_ros.plugin_base import WakewordEvent
+from susumu_asr.plugin_base import WakewordEvent
 
 FRAME_SEC = 512 / 16000
 
@@ -25,7 +25,7 @@ FRAME_SEC = 512 / 16000
 def _fresh_plugin(**overrides):
     """毎回クリーンな LivekitWakewordPlugin インスタンスを返す."""
     pytest.importorskip('livekit.wakeword', reason='livekit-wakeword が未インストール')
-    from susumu_asr_ros.wakeword_livekit import LivekitWakewordPlugin
+    from susumu_asr.wakeword_livekit import LivekitWakewordPlugin
     plugin = LivekitWakewordPlugin()
     params = {
         'model_folder': 'models',
@@ -118,7 +118,7 @@ class TestLivekitWakewordPluginReset:
     def test_default_params(self):
         """デフォルトパラメータが正しく設定されること."""
         pytest.importorskip('livekit.wakeword', reason='livekit-wakeword が未インストール')
-        from susumu_asr_ros.wakeword_livekit import LivekitWakewordPlugin
+        from susumu_asr.wakeword_livekit import LivekitWakewordPlugin
         plugin = LivekitWakewordPlugin()
         plugin.load_params({})
         assert plugin._model_name == 'hey_mycroft_v0.1.onnx'

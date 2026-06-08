@@ -5,8 +5,8 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 import launch_ros.actions  # noqa: I201
 
-_DEBUG_DIR = '/home/taro/ros2_ws/src/susumu_asr_ros/debug'
-_ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr_ros/.env'
+_DEBUG_DIR = '/home/taro/ros2_ws/src/susumu_asr/debug'
+_ENV_FILE = '/home/taro/ros2_ws/src/susumu_asr/.env'
 
 
 def generate_launch_description():
@@ -32,7 +32,7 @@ def generate_launch_description():
             description='.env ファイルのパス',
         ),
         launch_ros.actions.Node(
-            package='susumu_asr_ros',
+            package='susumu_asr',
             executable='susumu_asr_node',
             name='susumu_asr_node',
             output='screen',

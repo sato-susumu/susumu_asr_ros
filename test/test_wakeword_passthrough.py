@@ -10,14 +10,14 @@ passthrough は VAD_START 後 delay_sec 秒後に即 DETECTED を返す。
 from conftest import load_frames
 import pytest
 
-from susumu_asr_ros.plugin_base import WakewordEvent
+from susumu_asr.plugin_base import WakewordEvent
 
 FRAME_SEC = 512 / 16000
 
 
 def _fresh_plugin(**overrides):
     """毎回クリーンな PassthroughWakewordPlugin インスタンスを返す."""
-    from susumu_asr_ros.wakeword_passthrough import PassthroughWakewordPlugin
+    from susumu_asr.wakeword_passthrough import PassthroughWakewordPlugin
     plugin = PassthroughWakewordPlugin()
     params = {'delay_sec': 0.5}
     params.update(overrides)
@@ -71,7 +71,7 @@ class TestPassthroughWakewordPlugin:
 
     def test_default_params(self):
         """デフォルトパラメータが正しく設定されること."""
-        from susumu_asr_ros.wakeword_passthrough import PassthroughWakewordPlugin
+        from susumu_asr.wakeword_passthrough import PassthroughWakewordPlugin
         plugin = PassthroughWakewordPlugin()
         plugin.load_params({})
         assert plugin._delay_sec == 0.5

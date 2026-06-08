@@ -12,7 +12,7 @@ on:
     types: [published]
 
 env:
-  package_name: susumu_asr_ros
+  package_name: susumu_asr
 
 jobs:
   build_and_test:

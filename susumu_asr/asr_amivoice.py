@@ -4,12 +4,12 @@ import os
 import queue
 import threading
 
-from susumu_asr_ros.ros_logger import get_logger
+from susumu_asr.ros_logger import get_logger
 
-from susumu_asr_ros.com.amivoice.wrp.Wrp import Wrp
-from susumu_asr_ros.com.amivoice.wrp.WrpListener import WrpListener
-from susumu_asr_ros.constants import SAMPLE_RATE
-from susumu_asr_ros.plugin_base import (
+from susumu_asr.com.amivoice.wrp.Wrp import Wrp
+from susumu_asr.com.amivoice.wrp.WrpListener import WrpListener
+from susumu_asr.constants import SAMPLE_RATE
+from susumu_asr.plugin_base import (
     ASRCommand, ASRPluginBase, ASRResult, PluginParam,
 )
 

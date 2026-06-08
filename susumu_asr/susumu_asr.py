@@ -5,9 +5,9 @@ import queue
 import threading
 import time
 
-from susumu_asr_ros.ros_logger import get_logger
+from susumu_asr.ros_logger import get_logger
 
-from susumu_asr_ros.audio_io import (
+from susumu_asr.audio_io import (
     AudioRecorderBase,
     DummyAudioWriter,
     DummyLabelWriter,
@@ -17,8 +17,8 @@ from susumu_asr_ros.audio_io import (
     SpeechAudioWriter,
     WavAudioRecorder,
 )
-from susumu_asr_ros.constants import SAMPLE_RATE, SAMPLE_WIDTH
-from susumu_asr_ros.plugin_base import (
+from susumu_asr.constants import SAMPLE_RATE, SAMPLE_WIDTH
+from susumu_asr.plugin_base import (
     ASRCommand,
     AsrFinalResultEvent,
     AsrPartialResultEvent,

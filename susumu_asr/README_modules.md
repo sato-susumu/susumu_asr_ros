@@ -311,13 +311,13 @@ def get_param_declarations(self) -> list[PluginParam]:
 新しいプラグインは `setup.py` の対応グループにエントリポイントを追加することで利用可能になる。
 
 ```python
-"susumu_asr_ros.asr_plugins": [
+"susumu_asr.asr_plugins": [
     "my_asr = my_package.my_asr:MyASRPlugin",
 ],
-"susumu_asr_ros.vad_plugins": [
+"susumu_asr.vad_plugins": [
     "my_vad = my_package.my_vad:MyVADPlugin",
 ],
-"susumu_asr_ros.wakeword_plugins": [
+"susumu_asr.wakeword_plugins": [
     "my_ww = my_package.my_ww:MyWakewordPlugin",
 ],
 ```
