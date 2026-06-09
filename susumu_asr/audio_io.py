@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use('Agg')  # noqa: E402
 import matplotlib.patches as mpatches  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker as ticker  # noqa: E402
 import numpy as np  # noqa: E402
 import pyaudio  # noqa: E402
 from susumu_asr.ros_logger import get_logger  # noqa: E402
@@ -278,9 +279,19 @@ class SpeechAudioWriter(AudioWriterBase):
 _LABEL_COLORS = {
     'vad_speech': '#4a90d9',
     'ww_detected': '#e67e22',
+    '[P]': '#8e44ad',
+    '[F]': '#16a085',
 }
 _DEFAULT_LABEL_COLOR = '#27ae60'
 _SYSTEM_LABELS = {'vad_speech', 'ww_detected'}
+_POINT_LABEL_PREFIXES = ('[P]', '[F]')
+
+
+def _point_label_color(label: str) -> str:
+    for prefix in _POINT_LABEL_PREFIXES:
+        if label.startswith(prefix):
+            return _LABEL_COLORS[prefix]
+    return _DEFAULT_LABEL_COLOR
 
 
 class WaveformImageWriter:
@@ -373,9 +384,11 @@ class WaveformImageWriter:
             else:
                 ax_wave.axvspan(start, end, alpha=0.15, color=color)
 
-        # ASR結果を波形上段に表示
+        # ASR結果（区間ラベル）を波形上段に表示
         for start, end, label in labels:
             if label in _SYSTEM_LABELS:
+                continue
+            if label.startswith(_POINT_LABEL_PREFIXES):
                 continue
             cx = (start + end) / 2
             ax_wave.text(
@@ -383,51 +396,93 @@ class WaveformImageWriter:
                 ha='center', va='top', fontsize=8, color='#2c3e50',
                 transform=ax_wave.get_xaxis_transform(),
                 clip_on=True,
-                bbox=dict(
-                    facecolor='#f9e79f', edgecolor='#d4ac0d',
-                    alpha=0.9, pad=2, boxstyle='round,pad=0.3',
-                ),
+                bbox={
+                    'facecolor': '#f9e79f', 'edgecolor': '#d4ac0d',
+                    'alpha': 0.9, 'pad': 2, 'boxstyle': 'round,pad=0.3',
+                },
             )
 
         # --- 下段: ラベルバー ---
+        # Y軸を3段に分割（下から）:
+        #   VAD  : 0.00 〜 0.28
+        #   WW   : 0.36 〜 0.64
+        #   ASR  : 0.72 〜 1.00
+        _ROW = {
+            'vad': (0.00, 0.28),
+            'ww':  (0.36, 0.64),
+            'asr': (0.72, 1.00),
+        }
+
         ax_label.set_ylim(0, 1)
-        ax_label.set_yticks([])
+        ax_label.set_yticks([
+            (_ROW['vad'][0] + _ROW['vad'][1]) / 2,
+            (_ROW['ww'][0] + _ROW['ww'][1]) / 2,
+            (_ROW['asr'][0] + _ROW['asr'][1]) / 2,
+        ])
+        ax_label.set_yticklabels(['VAD', 'WW', 'ASR'], fontsize=6)
         ax_label.set_xlabel('Time (s)')
+        for y in (0.32, 0.68):
+            ax_label.axhline(y, color='#bbbbbb', linewidth=0.5, linestyle='--')
+
+        ax_label.xaxis.set_major_locator(ticker.MultipleLocator(1.0))
+        ax_label.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+        ax_label.grid(True, which='major', axis='x', linestyle='-', linewidth=0.4, alpha=0.4)
+        ax_label.grid(True, which='minor', axis='x', linestyle=':', linewidth=0.3, alpha=0.3)
+        ax_wave.xaxis.set_major_locator(ticker.MultipleLocator(1.0))
+        ax_wave.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
 
         seen_labels = {}
         for start, end, label in labels:
-            if label not in _SYSTEM_LABELS:
+            is_point_label = label.startswith(_POINT_LABEL_PREFIXES)
+            if label not in _SYSTEM_LABELS and not is_point_label:
                 continue
-            color = _LABEL_COLORS.get(label, _DEFAULT_LABEL_COLOR)
-            if start == end:
-                # 点イベント: 垂直線＋上部テキスト
-                ax_label.axvline(start, color=color, linewidth=1.5, alpha=0.9)
+
+            if is_point_label:
+                color = _point_label_color(label)
+                ymin, ymax = _ROW['asr']
+                ymid = (ymin + ymax) / 2
+                y_text = ymax - 0.01 if label.startswith('[P]') else ymid + 0.01
+                ax_label.axvline(start, color=color, linewidth=1.5, alpha=0.9,
+                                 ymin=ymin, ymax=ymax)
+                short = label if len(label) <= 25 else label[:23] + '…'
                 ax_label.text(
-                    start, 0.92, label,
-                    ha='center', va='top', fontsize=7, color=color,
+                    start, y_text, f'{short}\n{start:.2f}s',
+                    ha='left', va='top', fontsize=6, color='#111111',
                     clip_on=True,
-                    bbox=dict(
-                        facecolor='white', edgecolor='none',
-                        alpha=0.7, pad=1,
-                    ),
+                    bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.8, 'pad': 1},
                 )
-            else:
+            elif label == 'ww_detected':
+                color = _LABEL_COLORS['ww_detected']
+                ymin, ymax = _ROW['ww']
+                ax_label.axvline(start, color=color, linewidth=1.5, alpha=0.9,
+                                 ymin=ymin, ymax=ymax)
+                ax_label.text(
+                    start, ymax - 0.01, f'WW\n{start:.2f}s',
+                    ha='center', va='top', fontsize=6, color='#111111',
+                    clip_on=True,
+                    bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.8, 'pad': 1},
+                )
+            elif label == 'vad_speech':
+                color = _LABEL_COLORS['vad_speech']
+                ymin, ymax = _ROW['vad']
                 width = end - start
                 rect = mpatches.FancyBboxPatch(
-                    (start, 0.1), width, 0.8,
+                    (start, ymin + 0.01), width, ymax - ymin - 0.02,
                     boxstyle='round,pad=0.01',
                     facecolor=color, edgecolor='white',
                     linewidth=0.5, alpha=0.85,
                 )
                 ax_label.add_patch(rect)
-                short = label if len(label) <= 20 else label[:18] + '…'
                 ax_label.text(
-                    start + width / 2, 0.5, short,
-                    ha='center', va='center', fontsize=7, color='white',
+                    start + width / 2, (ymin + ymax) / 2,
+                    f'{start:.2f}s – {end:.2f}s',
+                    ha='center', va='center', fontsize=6, color='#111111',
                     clip_on=True,
                 )
-            if label not in seen_labels:
-                seen_labels[label] = mpatches.Patch(color=color, label=label)
+
+            legend_key = label[:3] if is_point_label else label
+            if legend_key not in seen_labels:
+                seen_labels[legend_key] = mpatches.Patch(color=color, label=legend_key)
 
         if seen_labels:
             ax_label.legend(

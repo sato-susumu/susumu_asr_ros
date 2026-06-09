@@ -127,7 +127,7 @@ IDLE
 `debug=True` で起動すると `./debug/` ディレクトリに以下を出力：
 - `{timestamp}_audio_full.wav` — 全音声
 - `speech_{timestamp}.wav` — 認識セッション単位の音声
-- `{timestamp}_label.txt` — VADラベル（タブ区切り：start, end, label）
+- `{timestamp}_label.txt` — ラベル（タブ区切り：start, end, label）。`vad_speech`（区間）、`ww_detected`（点）、ASR認識結果（区間）、`[P] テキスト`（発話ごと最初のpartial、点）、`[F] テキスト`（final、点）
 - `{timestamp}_log.txt` — 全ログのファイル出力
 - `{timestamp}_waveform.png` — 波形画像
 

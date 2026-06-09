@@ -99,6 +99,7 @@ class SpeechRecognitionSystem:
 
         self._speech_buffer: list[bytes] = []
         self._state: SRSState = SRSState.IDLE
+        self._first_partial_written: bool = False
         _prebuf_frames = int(2.0 * SAMPLE_RATE * SAMPLE_WIDTH // (512 * SAMPLE_WIDTH))
         self._wakeword_prebuffer: collections.deque = collections.deque(maxlen=_prebuf_frames)
 
@@ -280,6 +281,7 @@ class SpeechRecognitionSystem:
         self.on_asr_event(WakewordDetectedEvent(start=self.current_time, score=score))
         self.label_writer.write_segment(self.current_time, self.current_time, 'ww_detected')
         self._state = SRSState.IN_SPEECH
+        self._first_partial_written = False
 
         if self._should_extend_silence():
             self.vad_plugin.extend_silence_threshold(_WAKEWORD_SILENCE_THRESHOLD_MS)
@@ -313,12 +315,17 @@ class SpeechRecognitionSystem:
             else:
                 self.logger.info(f'[Partial] {result.text}')
                 self.on_asr_event(AsrPartialResultEvent(start=result.start, text=result.text))
+                if not self._first_partial_written:
+                    label = f'[P] {result.text}'
+                    self.label_writer.write_segment(self.current_time, self.current_time, label)
+                    self._first_partial_written = True
 
     def _on_asr_final(self, result: ASRResult) -> None:
         self.logger.info(f'[Final] {result.text}')
         end = result.end if result.end is not None else self.current_time
         self.on_asr_event(AsrFinalResultEvent(start=result.start, end=end, text=result.text))
         self.label_writer.write_segment(result.start, end, result.text)
+        self.label_writer.write_segment(self.current_time, self.current_time, f'[F] {result.text}')
         if self._should_extend_silence():
             self.vad_plugin.extend_silence_threshold(self.vad_plugin._silence_ms)
         if self._state == SRSState.IN_SPEECH:
