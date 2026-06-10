@@ -73,6 +73,7 @@ class SpeechRecognitionSystem:
         speech_audio_writer: SpeechAudioWriter | None = None,
         on_asr_event=None,
         on_stop=None,
+        on_audio_frame=None,
     ):
         self.stop_event = threading.Event()
 
@@ -92,6 +93,7 @@ class SpeechRecognitionSystem:
 
         self.on_asr_event = on_asr_event or (lambda d: None)
         self.on_stop = on_stop or (lambda: None)
+        self.on_audio_frame = on_audio_frame or (lambda f: None)
 
         self.processed_size: int = 0
         self.current_time: float = 0.0
@@ -121,6 +123,8 @@ class SpeechRecognitionSystem:
             while not self.stop_event.is_set():
                 frame = self.recorder.read_frame()
                 self.full_audio_writer.write(frame)
+                if frame:
+                    self.on_audio_frame(frame)
 
                 if not frame:
                     if isinstance(self.recorder, WavAudioRecorder):

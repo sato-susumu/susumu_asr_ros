@@ -54,7 +54,7 @@ def generate_launch_description():
             executable='asr_monitor_node',
             name='asr_monitor_node',
             output='screen',
-            parameters=[{'mic_device_index': -2}],
+            parameters=[],
         ),
     ])
 

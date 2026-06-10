@@ -39,12 +39,10 @@ class ASRMonitorWidget(QtWidgets.QWidget):
     # スレッドから安全にイベントを受け取るシグナル
     event_received = QtCore.pyqtSignal(dict)
 
-    def __init__(self, parent=None, wav_mode: bool = False):  # noqa: D107
+    def __init__(self, parent=None):  # noqa: D107
         super().__init__(parent)
         self._lock = threading.Lock()
-        self._wav_mode = wav_mode
 
-        # 波形バッファ（WAVモードでは未使用）
         self._samples = collections.deque(
             np.zeros(_WAVEFORM_SAMPLES, dtype=np.float32),
             maxlen=_WAVEFORM_SAMPLES,
@@ -78,40 +76,29 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         layout.setSpacing(4)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        # --- 波形グラフ（WAVモードではメッセージ表示） ---
+        # --- 波形グラフ ---
         self._vad_spans: list[pg.LinearRegionItem] = []
-        if self._wav_mode:
-            self._wave_plot = None
-            self._wave_curve = None
-            wav_msg = QtWidgets.QLabel('WAVモード: 波形表示なし')
-            wav_msg.setAlignment(QtCore.Qt.AlignCenter)
-            wav_msg.setStyleSheet(
-                'font-size: 18px; color: #888888; background: #1e1e1e;'
-                'border: 1px solid #444; border-radius: 4px;'
+        self._wave_plot = pg.PlotWidget(title='Waveform')
+        self._wave_plot.setYRange(-1.05, 1.05)
+        self._wave_plot.setXRange(0, _DISPLAY_SEC)
+        self._wave_plot.setLabel('left', 'Amplitude')
+        self._wave_plot.setLabel('bottom', 'Time (s)')
+        self._wave_plot.showGrid(x=True, y=False, alpha=0.3)
+        self._wave_plot.setBackground('#1e1e1e')
+        self._wave_curve = self._wave_plot.plot(
+            pen=pg.mkPen('#5bc8f5', width=1)
+        )
+        for _ in range(10):
+            span = pg.LinearRegionItem(
+                values=(0, 0),
+                brush=pg.mkBrush(74, 144, 217, 40),
+                pen=pg.mkPen(None),
+                movable=False,
             )
-            layout.addWidget(wav_msg, stretch=4)
-        else:
-            self._wave_plot = pg.PlotWidget(title='Waveform')
-            self._wave_plot.setYRange(-1.05, 1.05)
-            self._wave_plot.setXRange(0, _DISPLAY_SEC)
-            self._wave_plot.setLabel('left', 'Amplitude')
-            self._wave_plot.setLabel('bottom', 'Time (s)')
-            self._wave_plot.showGrid(x=True, y=False, alpha=0.3)
-            self._wave_plot.setBackground('#1e1e1e')
-            self._wave_curve = self._wave_plot.plot(
-                pen=pg.mkPen('#5bc8f5', width=1)
-            )
-            for _ in range(10):
-                span = pg.LinearRegionItem(
-                    values=(0, 0),
-                    brush=pg.mkBrush(74, 144, 217, 40),
-                    pen=pg.mkPen(None),
-                    movable=False,
-                )
-                span.hide()
-                self._wave_plot.addItem(span)
-                self._vad_spans.append(span)
-            layout.addWidget(self._wave_plot, stretch=4)
+            span.hide()
+            self._wave_plot.addItem(span)
+            self._vad_spans.append(span)
+        layout.addWidget(self._wave_plot, stretch=4)
 
         # --- 音量メーター ---
         vu_row = QtWidgets.QHBoxLayout()
@@ -139,8 +126,7 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         self._event_plot.setLabel('bottom', 'Time (s)')
         self._event_plot.setBackground('#1e1e1e')
         self._event_plot.showGrid(x=True, y=False, alpha=0.3)
-        if self._wave_plot is not None:
-            self._event_plot.setXLink(self._wave_plot)
+        self._event_plot.setXLink(self._wave_plot)
 
         # Y軸ラベル
         ax = self._event_plot.getAxis('left')
@@ -240,27 +226,27 @@ class ASRMonitorWidget(QtWidgets.QWidget):
             elapsed = self._elapsed_sec
             vu = self._vu_level
 
-        # 波形（マイクモードのみ）
         t0 = elapsed - _DISPLAY_SEC
-        if self._wave_plot is not None:
-            x_left = max(0.0, t0)
-            x_right = max(float(_DISPLAY_SEC), elapsed)
-            # 実データは常に elapsed 基準で右端に揃える。elapsed < 15s のときは
-            # x の左側が負になるが setXRange(0, 15) でクリップされるので問題ない
-            x = np.linspace(elapsed - _DISPLAY_SEC, elapsed, len(samples))
-            self._wave_curve.setData(x, samples)
-            self._wave_plot.setXRange(x_left, x_right)
+        x_left = max(0.0, t0)
+        x_right = max(float(_DISPLAY_SEC), elapsed)
 
-            vad_regions = [
-                (e[1], e[2] if e[2] is not None else elapsed)
-                for e in self._events if e[0] in ('vad', 'vad_start')
-            ]
-            for i, span in enumerate(self._vad_spans):
-                if i < len(vad_regions):
-                    span.setRegion(vad_regions[i])
-                    span.show()
-                else:
-                    span.hide()
+        # 波形
+        # 実データは常に elapsed 基準で右端に揃える。elapsed < 15s のときは
+        # x の左側が負になるが setXRange でクリップされるので問題ない
+        x = np.linspace(elapsed - _DISPLAY_SEC, elapsed, len(samples))
+        self._wave_curve.setData(x, samples)
+        self._wave_plot.setXRange(x_left, x_right)
+
+        vad_regions = [
+            (e[1], e[2] if e[2] is not None else elapsed)
+            for e in self._events if e[0] in ('vad', 'vad_start')
+        ]
+        for i, span in enumerate(self._vad_spans):
+            if i < len(vad_regions):
+                span.setRegion(vad_regions[i])
+                span.show()
+            else:
+                span.hide()
 
         # 音量メーター（RMSをdB換算して0〜1000にマッピング）
         db = 20 * np.log10(vu + 1e-9)  # -180〜0 dB
@@ -275,14 +261,7 @@ class ASRMonitorWidget(QtWidgets.QWidget):
                 pen=pg.mkPen('#555', width=1, style=QtCore.Qt.DashLine),
             )
             self._event_plot.addItem(line)
-        if self._wav_mode and self._events:
-            event_max_t = max((e[2] or e[1]) for e in self._events)
-            x_end = max(_DISPLAY_SEC, event_max_t + 1.0)
-            x_start = max(0.0, x_end - _DISPLAY_SEC)
-        else:
-            x_start = max(0.0, t0)
-            x_end = max(_DISPLAY_SEC, elapsed)
-        self._event_plot.setXRange(x_start, x_end)
+        self._event_plot.setXRange(x_left, x_right)
 
         for etype, ts, te, label in self._events:
             if etype in ('vad', 'vad_start'):

@@ -9,7 +9,8 @@ import threading
 from dotenv import load_dotenv
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+import numpy as np
+from std_msgs.msg import Int16MultiArray, MultiArrayDimension, String
 
 from susumu_asr.ros_logger import setup_loguru
 
@@ -37,6 +38,7 @@ class SusumuAsrNode(Node):
 
         self.pub_stt_event = self.create_publisher(String, 'stt_event', 10)
         self.pub_stt = self.create_publisher(String, 'stt', 10)
+        self.pub_audio = self.create_publisher(Int16MultiArray, 'audio_raw', 10)
 
         # -------------------------------------------------------
         # フレームワーク共通パラメータ
@@ -178,6 +180,7 @@ class SusumuAsrNode(Node):
             speech_audio_writer=speech_audio_writer,
             on_asr_event=self._on_asr_event,
             on_stop=self._on_system_stop,
+            on_audio_frame=self._on_audio_frame,
         )
 
         self._thread = threading.Thread(target=self._system.start, daemon=True)
@@ -197,6 +200,14 @@ class SusumuAsrNode(Node):
             self.declare_parameter(ros_name, decl.default)
             values[decl.name] = self.get_parameter(ros_name).value
         return values
+
+    def _on_audio_frame(self, frame: bytes):
+        if not rclpy.ok():
+            return
+        samples = np.frombuffer(frame, dtype=np.int16).tolist()
+        msg = Int16MultiArray()
+        msg.data = samples
+        self.pub_audio.publish(msg)
 
     def _on_asr_event(self, event: ASREventUnion):
         if not rclpy.ok():
