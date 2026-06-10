@@ -40,6 +40,7 @@ setup(
     entry_points={
         'console_scripts': [
             'susumu_asr_node = susumu_asr.susumu_asr_node:main',
+            'asr_monitor_node = susumu_asr.asr_monitor_node:main',
         ],
         'susumu_asr.asr_plugins': [
             'google_cloud = susumu_asr.asr_google:GoogleCloudASRPlugin',
