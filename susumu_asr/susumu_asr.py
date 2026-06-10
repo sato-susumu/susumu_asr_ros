@@ -181,7 +181,11 @@ class SpeechRecognitionSystem:
         actual_start = max(0.0, self.vad_start - pre_speech_sec)
         self.label_writer.write_segment(self.vad_start, end_time, 'vad_speech')
         self.label_writer.write_segment(actual_start, end_time, 'vad_speech_pre')
-        self.on_asr_event(VadStopEvent(start=self.vad_start, end=end_time))
+        self.on_asr_event(VadStopEvent(
+            start=self.vad_start,
+            end=end_time,
+            pre_start=actual_start if actual_start < self.vad_start else None,
+        ))
 
     def _finalize_state(self, reason: str) -> None:
         """IDLE以外の状態で終了する場合に後始末して _transition_to_idle を呼ぶ."""

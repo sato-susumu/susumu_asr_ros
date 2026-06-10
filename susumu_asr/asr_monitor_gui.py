@@ -52,8 +52,8 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         # 音量メーター
         self._vu_level = 0.0
 
-        # イベントリスト: (type, t_start, t_end_or_None, label)
-        self._events: list[tuple[str, float, float | None, str]] = []
+        # イベントリスト: (type, t_start, t_end_or_None, label, pre_start_or_None)
+        self._events: list[tuple[str, float, float | None, str, float | None]] = []
 
         # ASRテキスト
         self._asr_text = ''
@@ -191,26 +191,27 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         t = ev.get('start', self._elapsed_sec)
 
         if et == 'vad_speech_start':
-            self._events.append(('vad_start', t, None, ''))
+            self._events.append(('vad_start', t, None, '', None))
         elif et == 'vad_speech_stop':
             end = ev.get('end', t)
+            pre_start = ev.get('pre_start')
             # 対応する vad_start を閉じる
             for i in range(len(self._events) - 1, -1, -1):
                 ev_i = self._events[i]
                 if ev_i[0] == 'vad_start' and ev_i[2] is None:
-                    self._events[i] = ('vad', ev_i[1], end, '')
+                    self._events[i] = ('vad', ev_i[1], end, '', pre_start)
                     break
         elif et == 'ww_detected':
-            self._events.append(('ww', t, t, ''))
+            self._events.append(('ww', t, t, '', None))
         elif et == 'asr_partial_result':
             self._partial_text = ev.get('text', '')
-            self._events.append(('partial', t, t, self._partial_text))
+            self._events.append(('partial', t, t, self._partial_text, None))
         elif et == 'asr_final_result':
             end = ev.get('end', t)
             text = ev.get('text', '')
             self._partial_text = ''
             self._asr_text = text
-            self._events.append(('final', t, end, text))
+            self._events.append(('final', t, end, text, None))
 
         # 古いイベントを削除（表示ウィンドウの2倍以上前）
         cutoff = self._elapsed_sec - _DISPLAY_SEC * 2
@@ -237,8 +238,9 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         self._wave_curve.setData(x, samples)
         self._wave_plot.setXRange(x_left, x_right)
 
+        # 波形上のVADスパンはpre_startを含む全区間を表示
         vad_regions = [
-            (e[1], e[2] if e[2] is not None else elapsed)
+            (e[4] if e[4] is not None else e[1], e[2] if e[2] is not None else elapsed)
             for e in self._events if e[0] in ('vad', 'vad_start')
         ]
         for i, span in enumerate(self._vad_spans):
@@ -263,9 +265,12 @@ class ASRMonitorWidget(QtWidgets.QWidget):
             self._event_plot.addItem(line)
         self._event_plot.setXRange(x_left, x_right)
 
-        for etype, ts, te, label in self._events:
+        for etype, ts, te, label, pre_start in self._events:
             if etype in ('vad', 'vad_start'):
                 te_actual = te if te is not None else (elapsed or ts)
+                # pre_speech区間を薄い色で描いた後にspeech区間を濃い色で上書き
+                if pre_start is not None:
+                    self._draw_bar(pre_start, te_actual, _ROW_VAD, _COLOR_VAD_PRE)
                 self._draw_bar(ts, te_actual, _ROW_VAD, _COLOR_VAD)
                 self._draw_text(ts, _ROW_VAD, f'{ts:.1f}s', anchor=(0, 0))
             elif etype == 'ww':
