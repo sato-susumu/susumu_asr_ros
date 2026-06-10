@@ -191,15 +191,15 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         t = ev.get('start', self._elapsed_sec)
 
         if et == 'vad_speech_start':
-            self._events.append(('vad_start', t, None, '', None))
+            pre_start = ev.get('pre_start')
+            self._events.append(('vad_start', t, None, '', pre_start))
         elif et == 'vad_speech_stop':
             end = ev.get('end', t)
-            pre_start = ev.get('pre_start')
-            # 対応する vad_start を閉じる
+            # 対応する vad_start を閉じる（pre_start はそのまま引き継ぐ）
             for i in range(len(self._events) - 1, -1, -1):
                 ev_i = self._events[i]
                 if ev_i[0] == 'vad_start' and ev_i[2] is None:
-                    self._events[i] = ('vad', ev_i[1], end, '', pre_start)
+                    self._events[i] = ('vad', ev_i[1], end, '', ev_i[4])
                     break
         elif et == 'ww_detected':
             self._events.append(('ww', t, t, '', None))

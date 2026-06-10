@@ -47,6 +47,7 @@ class VadStartEvent:
     """VAD 発話開始イベント。on_asr_event 経由で通知される."""
 
     start: float
+    pre_start: float | None = None  # pre_speech を含む開始時刻（None なら start と同じ）
     event_type: ASREventType = field(
         default=ASREventType.VAD_START, init=False
     )
@@ -58,7 +59,6 @@ class VadStopEvent:
 
     start: float
     end: float
-    pre_start: float | None = None  # pre_speech を含む開始時刻（None なら start と同じ）
     event_type: ASREventType = field(
         default=ASREventType.VAD_STOP, init=False
     )

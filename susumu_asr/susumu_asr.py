@@ -181,11 +181,7 @@ class SpeechRecognitionSystem:
         actual_start = max(0.0, self.vad_start - pre_speech_sec)
         self.label_writer.write_segment(self.vad_start, end_time, 'vad_speech')
         self.label_writer.write_segment(actual_start, end_time, 'vad_speech_pre')
-        self.on_asr_event(VadStopEvent(
-            start=self.vad_start,
-            end=end_time,
-            pre_start=actual_start if actual_start < self.vad_start else None,
-        ))
+        self.on_asr_event(VadStopEvent(start=self.vad_start, end=end_time))
 
     def _finalize_state(self, reason: str) -> None:
         """IDLE以外の状態で終了する場合に後始末して _transition_to_idle を呼ぶ."""
@@ -236,7 +232,12 @@ class SpeechRecognitionSystem:
             else self.current_time
         )
         self.wakeword_plugin.reset()
-        self.on_asr_event(VadStartEvent(start=self.vad_start))
+        pre_speech_sec = getattr(self.vad_plugin, '_pre_speech_ms', 0) / 1000.0
+        pre_start = max(0.0, self.vad_start - pre_speech_sec)
+        self.on_asr_event(VadStartEvent(
+            start=self.vad_start,
+            pre_start=pre_start if pre_start < self.vad_start else None,
+        ))
         self.on_asr_event(WakewordListeningStartedEvent(start=self.vad_start))
         self._feed_wakeword_frames(list(self._wakeword_prebuffer) + list(vad_result.frames))
         self._wakeword_prebuffer.clear()
