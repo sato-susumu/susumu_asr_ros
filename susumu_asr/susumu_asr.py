@@ -173,7 +173,10 @@ class SpeechRecognitionSystem:
     def _transition_to_idle(self, end_time: float) -> None:
         """BUFFERING/IN_SPEECH → IDLE への唯一の出口。"""
         self._state = SRSState.IDLE
+        pre_speech_sec = getattr(self.vad_plugin, '_pre_speech_ms', 0) / 1000.0
+        actual_start = max(0.0, self.vad_start - pre_speech_sec)
         self.label_writer.write_segment(self.vad_start, end_time, 'vad_speech')
+        self.label_writer.write_segment(actual_start, end_time, 'vad_speech_pre')
         self.on_asr_event(VadStopEvent(start=self.vad_start, end=end_time))
 
     def _finalize_state(self, reason: str) -> None:

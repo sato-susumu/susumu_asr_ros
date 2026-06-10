@@ -278,12 +278,13 @@ class SpeechAudioWriter(AudioWriterBase):
 
 _LABEL_COLORS = {
     'vad_speech': '#4a90d9',
+    'vad_speech_pre': '#a8c8f0',
     'ww_detected': '#e67e22',
     '[P]': '#8e44ad',
     '[F]': '#16a085',
 }
 _DEFAULT_LABEL_COLOR = '#27ae60'
-_SYSTEM_LABELS = {'vad_speech', 'ww_detected'}
+_SYSTEM_LABELS = {'vad_speech', 'vad_speech_pre', 'ww_detected'}
 _POINT_LABEL_PREFIXES = ('[P]', '[F]')
 
 
@@ -462,6 +463,23 @@ class WaveformImageWriter:
                     clip_on=True,
                     bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.8, 'pad': 1},
                 )
+            elif label == 'vad_speech_pre':
+                # pre_speech込みの実際の音声開始バー（薄色）
+                color = _LABEL_COLORS['vad_speech_pre']
+                ymin, ymax = _ROW['vad']
+                width = end - start
+                rect = mpatches.FancyBboxPatch(
+                    (start, ymin + 0.01), width, ymax - ymin - 0.02,
+                    boxstyle='round,pad=0.01',
+                    facecolor=color, edgecolor='none',
+                    linewidth=0, alpha=0.6,
+                )
+                ax_label.add_patch(rect)
+                ax_label.text(
+                    start, (ymin + ymax) / 2, f'{start:.2f}s',
+                    ha='left', va='center', fontsize=6, color='#333333',
+                    clip_on=True,
+                )
             elif label == 'vad_speech':
                 color = _LABEL_COLORS['vad_speech']
                 ymin, ymax = _ROW['vad']
@@ -473,11 +491,20 @@ class WaveformImageWriter:
                     linewidth=0.5, alpha=0.85,
                 )
                 ax_label.add_patch(rect)
+                # VAD検出時刻の縦線
+                ax_label.axvline(start, color=color, linewidth=1.0, alpha=0.9,
+                                 ymin=ymin, ymax=ymax)
                 ax_label.text(
-                    start + width / 2, (ymin + ymax) / 2,
-                    f'{start:.2f}s – {end:.2f}s',
-                    ha='center', va='center', fontsize=6, color='#111111',
+                    start, ymax - 0.01, f'VAD {start:.2f}s',
+                    ha='left', va='top', fontsize=6, color='#111111',
                     clip_on=True,
+                    bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.8, 'pad': 1},
+                )
+                ax_label.text(
+                    end, ymax - 0.01, f'– {end:.2f}s',
+                    ha='right', va='top', fontsize=6, color='#111111',
+                    clip_on=True,
+                    bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': 0.8, 'pad': 1},
                 )
 
             legend_key = label[:3] if is_point_label else label
