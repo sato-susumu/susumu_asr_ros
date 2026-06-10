@@ -49,6 +49,13 @@ def generate_launch_description():
                 'google_cloud.language_code': LaunchConfiguration('language_code'),
             }],
         ),
+        launch_ros.actions.Node(
+            package='susumu_asr',
+            executable='asr_monitor_node',
+            name='asr_monitor_node',
+            output='screen',
+            parameters=[{'mic_device_index': -2}],
+        ),
     ])
 
 
