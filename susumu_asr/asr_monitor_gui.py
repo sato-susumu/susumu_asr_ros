@@ -243,9 +243,13 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         # 波形（マイクモードのみ）
         t0 = elapsed - _DISPLAY_SEC
         if self._wave_plot is not None:
-            x = np.linspace(max(0.0, t0), elapsed, len(samples))
+            x_left = max(0.0, t0)
+            x_right = max(float(_DISPLAY_SEC), elapsed)
+            # 実データは常に elapsed 基準で右端に揃える。elapsed < 15s のときは
+            # x の左側が負になるが setXRange(0, 15) でクリップされるので問題ない
+            x = np.linspace(elapsed - _DISPLAY_SEC, elapsed, len(samples))
             self._wave_curve.setData(x, samples)
-            self._wave_plot.setXRange(max(0.0, t0), max(_DISPLAY_SEC, elapsed))
+            self._wave_plot.setXRange(x_left, x_right)
 
             vad_regions = [
                 (e[1], e[2] if e[2] is not None else elapsed)
@@ -289,11 +293,11 @@ class ASRMonitorWidget(QtWidgets.QWidget):
                 self._draw_vline(ts, _ROW_WW, _COLOR_WW, f'WW\n{ts:.1f}s')
             elif etype == 'partial':
                 self._draw_vline(ts, _ROW_ASR, _COLOR_P,
-                                 f'[P] {label[:12]}\n{ts:.1f}s', top=True)
+                                 f'[P] {label}\n{ts:.1f}s', top=True)
             elif etype == 'final':
                 te_actual = te if te is not None else ts
                 self._draw_bar(ts, te_actual, _ROW_ASR, _COLOR_ASR, alpha=60)
-                lbl_f = f'[F] {label[:12]}\n{te_actual:.1f}s'
+                lbl_f = f'[F] {label}\n{te_actual:.1f}s'
                 self._draw_vline(
                     te_actual, _ROW_ASR, _COLOR_F, lbl_f, top=False
                 )
