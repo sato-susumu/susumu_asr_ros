@@ -1,11 +1,9 @@
 """ASR モニター GUI — pyqtgraph ベースのリアルタイム波形・イベント表示."""
-import collections
 import threading
 
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets  # noqa: I100,I201
 import pyqtgraph as pg  # noqa: I201
-
 from susumu_asr.constants import SAMPLE_RATE
 
 # 表示する波形の長さ（秒）
@@ -43,10 +41,9 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self._lock = threading.Lock()
 
-        self._samples = collections.deque(
-            np.zeros(_WAVEFORM_SAMPLES, dtype=np.float32),
-            maxlen=_WAVEFORM_SAMPLES,
-        )
+        # 波形リングバッファ（_write_idx が次の書き込み位置）
+        self._samples = np.zeros(_WAVEFORM_SAMPLES, dtype=np.float32)
+        self._write_idx = 0
         self._elapsed_sec = 0.0  # 受信済みサンプル数から計算した経過時間
 
         # 音量メーター
@@ -88,6 +85,9 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         self._wave_curve = self._wave_plot.plot(
             pen=pg.mkPen('#5bc8f5', width=1)
         )
+        # 画面解像度に合わせてピーク保持ダウンサンプリング（描画点数を削減）
+        self._wave_curve.setDownsampling(auto=True, method='peak')
+        self._wave_curve.setClipToView(True)
         for _ in range(10):
             span = pg.LinearRegionItem(
                 values=(0, 0),
@@ -168,11 +168,24 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         samples = np.frombuffer(
             pcm_bytes, dtype=np.int16
         ).astype(np.float32) / 32768.0
+        n_total = len(samples)
+        if n_total == 0:
+            return
+        rms = float(np.sqrt(np.mean(samples ** 2)))
+        if n_total >= _WAVEFORM_SAMPLES:
+            samples = samples[-_WAVEFORM_SAMPLES:]
+        n = len(samples)
         with self._lock:
-            self._samples.extend(samples)
-            self._elapsed_sec += len(samples) / SAMPLE_RATE
-            n = len(samples)
-            rms = float(np.sqrt(np.mean(samples ** 2))) if n else 0.0
+            idx = self._write_idx
+            end = idx + n
+            if end <= _WAVEFORM_SAMPLES:
+                self._samples[idx:end] = samples
+            else:
+                k = _WAVEFORM_SAMPLES - idx
+                self._samples[idx:] = samples[:k]
+                self._samples[:n - k] = samples[k:]
+            self._write_idx = end % _WAVEFORM_SAMPLES
+            self._elapsed_sec += n_total / SAMPLE_RATE
             self._vu_level = (
                 _VU_ALPHA * rms + (1 - _VU_ALPHA) * self._vu_level
             )
@@ -205,12 +218,22 @@ class ASRMonitorWidget(QtWidgets.QWidget):
             self._events.append(('ww', t, t, '', None))
         elif et == 'asr_partial_result':
             self._partial_text = ev.get('text', '')
+            # 同じ発話の古いpartialは最新のもので置き換える（重なり防止）
+            self._events = [
+                e for e in self._events
+                if not (e[0] == 'partial' and e[1] == t)
+            ]
             self._events.append(('partial', t, t, self._partial_text, None))
         elif et == 'asr_final_result':
             end = ev.get('end', t)
             text = ev.get('text', '')
             self._partial_text = ''
             self._asr_text = text
+            # finalが出たら同じ発話のpartial表示は消す（ラベル重なり防止）
+            self._events = [
+                e for e in self._events
+                if not (e[0] == 'partial' and e[1] >= t)
+            ]
             self._events.append(('final', t, end, text, None))
 
         # 古いイベントを削除（表示ウィンドウの2倍以上前）
@@ -223,7 +246,10 @@ class ASRMonitorWidget(QtWidgets.QWidget):
 
     def _update_plots(self):
         with self._lock:
-            samples = np.array(self._samples, dtype=np.float32)
+            idx = self._write_idx
+            samples = np.concatenate(
+                (self._samples[idx:], self._samples[:idx])
+            )
             elapsed = self._elapsed_sec
             vu = self._vu_level
 
@@ -309,7 +335,9 @@ class ASRMonitorWidget(QtWidgets.QWidget):
             pen=pg.mkPen(color, width=1.5),
             label=label,
             labelOpts={
-                'position': 0.95 if top else 0.72,
+                # ラベルは position を中心に描かれるため、上端ぎりぎりに
+                # 置くと2行テキストの上半分がプロット外にはみ出して切れる
+                'position': 0.85 if top else 0.72,
                 'color': '#eeeeee',
                 'fill': pg.mkBrush(30, 30, 30, 180),
                 'movable': False,
