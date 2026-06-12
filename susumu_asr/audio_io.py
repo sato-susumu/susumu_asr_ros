@@ -85,6 +85,11 @@ class MicAudioRecorder(AudioRecorderBase):
         )
         self.stream.start_stream()
         self.logger.info(f'input_device_index: {self.input_device_index}')
+        # デバイス/ドライバ側のバッファ遅延。read_frame 以前に発生するため
+        # モニター側の遅延計測（取得時刻起点）には含まれない
+        self.logger.info(
+            f'入力デバイス遅延: {self.stream.get_input_latency() * 1000:.1f}ms'
+        )
         self.logger.info('マイク入力開始')
 
     def read_frame(self) -> bytes:

@@ -5,12 +5,13 @@ import json
 import os
 import queue
 import threading
+import time
 
 from dotenv import load_dotenv
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray, String
+from std_msgs.msg import Int16MultiArray, MultiArrayDimension, String
 from susumu_asr.audio_io import (
     DummyAudioWriter,
     DummyLabelWriter,
@@ -205,6 +206,13 @@ class SusumuAsrNode(Node):
         samples = np.frombuffer(frame, dtype=np.int16).tolist()
         msg = Int16MultiArray()
         msg.data = samples
+        # 遅延計測用: フレーム取得時刻（epoch秒）を dim[0].label に載せる。
+        # Int16MultiArray にはヘッダがないため layout を流用する
+        dim = MultiArrayDimension()
+        dim.label = f'{time.time():.6f}'
+        dim.size = len(samples)
+        dim.stride = len(samples)
+        msg.layout.dim = [dim]
         self.pub_audio.publish(msg)
 
     def _on_asr_event(self, event: ASREventUnion):

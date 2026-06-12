@@ -35,7 +35,14 @@ class ASRMonitorNode(Node):
 
     def _on_audio_raw(self, msg: Int16MultiArray):
         frame = np.array(msg.data, dtype=np.int16).tobytes()
-        self._widget.push_audio(frame)
+        # publisher が layout.dim[0].label に載せたフレーム取得時刻（epoch秒）
+        capture_time = None
+        if msg.layout.dim:
+            try:
+                capture_time = float(msg.layout.dim[0].label)
+            except ValueError:
+                pass
+        self._widget.push_audio(frame, capture_time=capture_time)
 
 
 def main():  # noqa: D103

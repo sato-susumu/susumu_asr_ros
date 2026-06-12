@@ -1,5 +1,7 @@
 """ASR モニター GUI — pyqtgraph ベースのリアルタイム波形・イベント表示."""
+import os
 import threading
+import time
 
 import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets  # noqa: I100,I201
@@ -26,9 +28,59 @@ _ROW_VAD = (0.0, 0.28)
 _ROW_WW = (0.36, 0.64)
 _ROW_ASR = (0.72, 1.00)
 
+# パフォーマンス計測（ASR_MONITOR_PERF=0 で出力停止）
+_PERF_ENABLED = os.environ.get('ASR_MONITOR_PERF', '1') != '0'
+_PERF_REPORT_SEC = 5.0
+
 
 def _hex_to_qcolor(h: str) -> QtGui.QColor:
     return QtGui.QColor(h)
+
+
+class _PerfStats:
+    """
+    音声取得→表示の各段階の遅延を集計し、定期的に標準出力へ要約を出す.
+
+    段階（名前順 = パイプライン順）:
+      1_transport   publisher がフレームを取得してから monitor が受信するまで
+      2_buffer_wait 受信してから描画タイマーが拾うまで
+      3_draw        _update_plots の処理時間
+      4_e2e_draw    フレーム取得から描画処理完了まで（①+②+③）
+      5_e2e_painted フレーム取得から Qt のペイント処理後まで（実表示に最も近い）
+      frame_gap     描画タイマーの実呼び出し間隔（逆数が実FPS）
+    """
+
+    def __init__(self):
+        # name -> [合計秒, 最大秒, 回数]
+        self._acc: dict[str, list] = {}
+        self._last_report = time.perf_counter()
+
+    def add(self, name: str, dt: float):
+        e = self._acc.get(name)
+        if e is None:
+            self._acc[name] = [dt, dt, 1]
+        else:
+            e[0] += dt
+            if dt > e[1]:
+                e[1] = dt
+            e[2] += 1
+
+    def maybe_report(self, extra: str = ''):
+        if not _PERF_ENABLED:
+            return
+        now = time.perf_counter()
+        if now - self._last_report < _PERF_REPORT_SEC:
+            return
+        gap = self._acc.pop('frame_gap', None)
+        fps = f'fps {gap[2] / gap[0]:.1f}' if gap and gap[0] > 0 else 'fps -'
+        parts = [
+            f'{name}: avg {total / cnt * 1e3:.1f}ms max {mx * 1e3:.1f}ms'
+            for name, (total, mx, cnt) in sorted(self._acc.items())
+        ]
+        print(f'[monitor-perf] {fps} {extra}| ' + ' | '.join(parts),
+              flush=True)
+        self._acc.clear()
+        self._last_report = now
 
 
 class ASRMonitorWidget(QtWidgets.QWidget):
@@ -56,13 +108,21 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         self._asr_text = ''
         self._partial_text = ''
 
+        # 遅延計測（音声取得→表示）
+        self._perf = _PerfStats()
+        self._last_frame_start: float | None = None
+        self._latest_capture_t: float | None = None  # 最新フレームの取得時刻
+        self._latest_recv_t: float | None = None  # 最新フレームの受信時刻
+        self._last_drawn_recv_t: float | None = None  # 直近描画時のフレーム
+
         self._build_ui()
         self.event_received.connect(self._on_event)
 
-        # 描画タイマー 30fps
+        # 描画タイマー 60fps（描画自体は数msなので余裕がある。
+        # タイマー待ちが表示遅延の主要因の一つのため周期を短くする）
         self._timer = QtCore.QTimer()
         self._timer.timeout.connect(self._update_plots)
-        self._timer.start(33)
+        self._timer.start(16)
 
     # ------------------------------------------------------------------
     # UI構築
@@ -163,8 +223,14 @@ class ASRMonitorWidget(QtWidgets.QWidget):
     # 外部からの呼び出し
     # ------------------------------------------------------------------
 
-    def push_audio(self, pcm_bytes: bytes):
-        """マイク/WAVフレームを受け取って波形バッファに追加."""
+    def push_audio(self, pcm_bytes: bytes, capture_time: float | None = None):
+        """
+        マイク/WAVフレームを受け取って波形バッファに追加.
+
+        capture_time は publisher 側でフレームを取得した時刻（epoch秒）。
+        与えられた場合、音声取得→表示の遅延計測に使う。
+        """
+        recv_time = time.time()
         samples = np.frombuffer(
             pcm_bytes, dtype=np.int16
         ).astype(np.float32) / 32768.0
@@ -189,6 +255,11 @@ class ASRMonitorWidget(QtWidgets.QWidget):
             self._vu_level = (
                 _VU_ALPHA * rms + (1 - _VU_ALPHA) * self._vu_level
             )
+            if capture_time is not None:
+                self._latest_capture_t = capture_time
+                self._latest_recv_t = recv_time
+        if capture_time is not None:
+            self._perf.add('1_transport', recv_time - capture_time)
 
     def push_event(self, event: dict):
         """ROS2スレッドから呼ぶ — シグナル経由でUIスレッドへ転送."""
@@ -245,6 +316,12 @@ class ASRMonitorWidget(QtWidgets.QWidget):
     # ------------------------------------------------------------------
 
     def _update_plots(self):
+        t_start = time.perf_counter()
+        wall_start = time.time()
+        if self._last_frame_start is not None:
+            self._perf.add('frame_gap', t_start - self._last_frame_start)
+        self._last_frame_start = t_start
+
         with self._lock:
             idx = self._write_idx
             samples = np.concatenate(
@@ -252,6 +329,8 @@ class ASRMonitorWidget(QtWidgets.QWidget):
             )
             elapsed = self._elapsed_sec
             vu = self._vu_level
+            capture_t = self._latest_capture_t
+            recv_t = self._latest_recv_t
 
         t0 = elapsed - _DISPLAY_SEC
         x_left = max(0.0, t0)
@@ -316,6 +395,23 @@ class ASRMonitorWidget(QtWidgets.QWidget):
         display = self._partial_text or self._asr_text
         prefix = '[部分] ' if self._partial_text else '[確定] '
         self._asr_label.setText(f'{prefix}{display}' if display else '')
+
+        # 遅延計測: このフレームで描画した最新サンプルを基準にする。
+        # 音声が止まっている間は古いフレームを測り続けないようスキップ
+        self._perf.add('3_draw', time.perf_counter() - t_start)
+        if capture_t is not None and recv_t != self._last_drawn_recv_t:
+            self._last_drawn_recv_t = recv_t
+            self._perf.add('2_buffer_wait', wall_start - recv_t)
+            self._perf.add('4_e2e_draw', time.time() - capture_t)
+            # singleShot(0) はペンディング中のペイントイベント処理後に
+            # 呼ばれるため、実際に画面へ反映された時点の近似になる
+            QtCore.QTimer.singleShot(
+                0,
+                lambda t=capture_t: self._perf.add(
+                    '5_e2e_painted', time.time() - t
+                ),
+            )
+        self._perf.maybe_report()
 
     def _draw_bar(self, x0, x1, row, color, alpha=120):
         ymin, ymax = row
