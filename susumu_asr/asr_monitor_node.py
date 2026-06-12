@@ -8,7 +8,6 @@ from PyQt5 import QtWidgets  # noqa: I100,I201
 import rclpy  # noqa: I201
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray, String  # noqa: I201
-
 from susumu_asr.asr_monitor_gui import ASRMonitorWidget
 
 

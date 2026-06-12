@@ -2,9 +2,6 @@
 import collections
 
 import numpy as np
-import torch
-
-
 from susumu_asr.constants import FRAME_LENGTH_MS, INT16_MAX, SAMPLE_RATE
 from susumu_asr.plugin_base import (
     PluginParam,
@@ -13,6 +10,7 @@ from susumu_asr.plugin_base import (
     VADResult,
 )
 from susumu_asr.ros_logger import get_logger
+import torch
 
 
 class SileroVADPlugin(VADPluginBase):

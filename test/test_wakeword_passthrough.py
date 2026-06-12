@@ -9,7 +9,6 @@ passthrough は VAD_START 後 delay_sec 秒後に即 DETECTED を返す。
 """
 from conftest import load_frames
 import pytest
-
 from susumu_asr.plugin_base import WakewordEvent
 
 FRAME_SEC = 512 / 16000

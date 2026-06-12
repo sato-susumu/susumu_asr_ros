@@ -16,7 +16,6 @@ livekit との検出タイミングの差:
 """
 from conftest import load_frames
 import pytest
-
 from susumu_asr.plugin_base import WakewordEvent
 
 FRAME_SEC = 512 / 16000

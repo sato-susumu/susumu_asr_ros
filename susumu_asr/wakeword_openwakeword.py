@@ -4,10 +4,13 @@ import os
 import numpy as np
 import openwakeword
 from openwakeword.model import Model
-from susumu_asr.ros_logger import get_logger
 from susumu_asr.plugin_base import (
-    PluginParam, WakewordEvent, WakewordPluginBase, WakewordResult,
+    PluginParam,
+    WakewordEvent,
+    WakewordPluginBase,
+    WakewordResult,
 )
+from susumu_asr.ros_logger import get_logger
 
 
 class OpenWakewordPlugin(WakewordPluginBase):

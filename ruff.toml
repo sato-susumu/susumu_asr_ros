@@ -1,10 +1,12 @@
+# com/ はベンダリングされた AmiVoice 公式 Wrp ライブラリ（AMENT_IGNORE と同様に除外）
+extend-exclude = ["build", "susumu_asr/com"]
+
 [lint]
 # E/W: pycodestyle, F: pyflakes, I: isort, UP: pyupgrade, B: flake8-bugbear
 select = ["E", "W", "F", "I", "UP", "B"]
 ignore = [
     "E501",   # 行長はプロジェクト既存の慣習に従う
 ]
-exclude = ["build/"]
 
 [lint.per-file-ignores]
 "launch/*.py" = [
@@ -13,3 +15,14 @@ exclude = ["build/"]
     "I001",    # launch ファイルの import 順はそのまま
 ]
 "test/conftest.py" = ["INP001"]
+"susumu_asr/plugin_base.py" = [
+    "B027",  # load_params 等は任意オーバーライドのフックで、空実装が意図
+]
+
+[lint.isort]
+# ament flake8 の import-order (google スタイル) と両立させる設定:
+# サードパーティとアプリケーション(susumu_asr)を同一グループでアルファベット順、
+# from-import 内の名前は大文字小文字を区別せず型でも並べ替えない
+known-third-party = ["susumu_asr", "conftest"]
+order-by-type = false
+force-sort-within-sections = true

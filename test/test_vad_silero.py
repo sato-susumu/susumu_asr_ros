@@ -18,13 +18,12 @@ frame_time（ENDイベント到達時刻）より min_silence_duration_ms 分早
   pytest test/test_vad_silero.py -v
 """
 from conftest import (
-    FRAME_SAMPLES,
-    SAMPLE_RATE,
     feed_all_with_timing,
+    FRAME_SAMPLES,
     load_frames,
+    SAMPLE_RATE,
 )
 import pytest
-
 from susumu_asr.plugin_base import VADEvent
 
 

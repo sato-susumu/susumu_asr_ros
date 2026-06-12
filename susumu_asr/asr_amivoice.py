@@ -4,14 +4,16 @@ import os
 import queue
 import threading
 
-from susumu_asr.ros_logger import get_logger
-
 from susumu_asr.com.amivoice.wrp.Wrp import Wrp
 from susumu_asr.com.amivoice.wrp.WrpListener import WrpListener
 from susumu_asr.constants import SAMPLE_RATE
 from susumu_asr.plugin_base import (
-    ASRCommand, ASRPluginBase, ASRResult, PluginParam,
+    ASRCommand,
+    ASRPluginBase,
+    ASRResult,
+    PluginParam,
 )
+from susumu_asr.ros_logger import get_logger
 
 _ENV_APP_KEY = 'AMIVOICE_APP_KEY'
 _WS_URL = 'wss://acp-api.amivoice.com/v1/nolog/'

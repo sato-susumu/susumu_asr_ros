@@ -7,13 +7,10 @@ import queue
 import threading
 
 from dotenv import load_dotenv
+import numpy as np
 import rclpy
 from rclpy.node import Node
-import numpy as np
-from std_msgs.msg import Int16MultiArray, MultiArrayDimension, String
-
-from susumu_asr.ros_logger import setup_loguru
-
+from std_msgs.msg import Int16MultiArray, String
 from susumu_asr.audio_io import (
     DummyAudioWriter,
     DummyLabelWriter,
@@ -28,6 +25,7 @@ from susumu_asr.audio_io import (
 from susumu_asr.constants import AUDIO_FRAME_SAMPLES
 from susumu_asr.plugin_base import ASREventUnion, AsrFinalResultEvent
 from susumu_asr.plugin_loader import PluginLoader
+from susumu_asr.ros_logger import setup_loguru
 from susumu_asr.susumu_asr import SpeechRecognitionSystem
 
 

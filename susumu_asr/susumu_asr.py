@@ -5,8 +5,6 @@ import queue
 import threading
 import time
 
-from susumu_asr.ros_logger import get_logger
-
 from susumu_asr.audio_io import (
     AudioRecorderBase,
     DummyAudioWriter,
@@ -33,6 +31,7 @@ from susumu_asr.plugin_base import (
     WakewordListeningStartedEvent,
     WakewordPluginBase,
 )
+from susumu_asr.ros_logger import get_logger
 
 # ウェイクワード検出後に適用する無音閾値（ms）。8秒タイムアウト相当。
 _WAKEWORD_SILENCE_THRESHOLD_MS = 8000
@@ -149,13 +148,13 @@ class SpeechRecognitionSystem:
             self._shutdown()
 
     def _handle_wav_eof(self):
-        """WAVファイル終端の処理。"""
+        """WAVファイル終端の処理."""
         self._finalize_state('WAV終端')
         self.vad_plugin.in_speech = False
         self.stop_event.set()
 
     def _shutdown(self):
-        """終了処理。"""
+        """終了処理."""
         self.stop_event.set()
         self.recorder.close()
         self._finalize_state('シャットダウン')
@@ -175,7 +174,7 @@ class SpeechRecognitionSystem:
     # ------------------------------------------------------------------
 
     def _transition_to_idle(self, end_time: float) -> None:
-        """BUFFERING/IN_SPEECH → IDLE への唯一の出口。"""
+        """BUFFERING/IN_SPEECH → IDLE への唯一の出口."""
         self._state = SRSState.IDLE
         pre_speech_sec = getattr(self.vad_plugin, '_pre_speech_ms', 0) / 1000.0
         actual_start = max(0.0, self.vad_start - pre_speech_sec)
@@ -197,7 +196,8 @@ class SpeechRecognitionSystem:
 
     def _should_extend_silence(self) -> bool:
         """ウェイクワード検出後に VAD の無音閾値を延長すべきか判定する."""
-        return self.wakeword_plugin.extend_silence_on_detected and self.asr_plugin.extend_silence_on_wakeword
+        return (self.wakeword_plugin.extend_silence_on_detected
+                and self.asr_plugin.extend_silence_on_wakeword)
 
     # ------------------------------------------------------------------
     # VAD イベント処理

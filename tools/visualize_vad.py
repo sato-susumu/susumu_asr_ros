@@ -107,9 +107,13 @@ def run_pipeline(wav_path: str, vad_plugin, wakeword_plugin,
     from susumu_asr.audio_io import WavAudioRecorder
     from susumu_asr.constants import AUDIO_FRAME_SAMPLES
     from susumu_asr.plugin_base import (
-        ASREventType, AsrFinalResultEvent, AsrPartialResultEvent,
-        VadStartEvent, VadStopEvent,
-        WakewordDetectedEvent, WakewordListeningStartedEvent,
+        ASREventType,
+        AsrFinalResultEvent,
+        AsrPartialResultEvent,
+        VadStartEvent,
+        VadStopEvent,
+        WakewordDetectedEvent,
+        WakewordListeningStartedEvent,
     )
     from susumu_asr.susumu_asr import SpeechRecognitionSystem
 

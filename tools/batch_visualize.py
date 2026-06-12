@@ -38,8 +38,12 @@ def main():
     args = parser.parse_args()
 
     from tools.visualize_vad import (
-        build_asr_plugin, build_vad_plugin, build_wakeword_plugin, load_wav,
-        plot, run_pipeline,
+        build_asr_plugin,
+        build_vad_plugin,
+        build_wakeword_plugin,
+        load_wav,
+        plot,
+        run_pipeline,
     )
 
     wav_files = sorted(glob.glob(os.path.join(args.audio_dir, '*.wav')))

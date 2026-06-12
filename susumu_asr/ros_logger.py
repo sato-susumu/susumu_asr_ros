@@ -1,6 +1,5 @@
 """loguru をROS2ロガーにブリッジするユーティリティ."""
 from loguru import logger
-
 import rclpy.logging
 
 _ROS2_LEVEL_MAP = {

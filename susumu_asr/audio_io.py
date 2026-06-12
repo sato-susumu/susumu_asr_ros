@@ -1,19 +1,18 @@
 """音声録音・書き込みクラス群."""
-import os
 from abc import ABC, abstractmethod
 from datetime import datetime
+import os
 import time
 import wave
 
 import matplotlib
+
 matplotlib.use('Agg')  # noqa: E402
 import matplotlib.patches as mpatches  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.ticker as ticker  # noqa: E402
 import numpy as np  # noqa: E402
 import pyaudio  # noqa: E402
-from susumu_asr.ros_logger import get_logger  # noqa: E402
-
 from susumu_asr.constants import (  # noqa: E402
     CHANNELS,
     FRAME_LENGTH_MS,
@@ -21,6 +20,7 @@ from susumu_asr.constants import (  # noqa: E402
     SAMPLE_RATE,
     SAMPLE_WIDTH,
 )
+from susumu_asr.ros_logger import get_logger  # noqa: E402
 
 
 class AudioRecorderBase(ABC):

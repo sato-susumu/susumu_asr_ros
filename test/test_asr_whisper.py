@@ -13,7 +13,6 @@ import threading
 import wave
 
 import pytest
-
 from susumu_asr.plugin_base import ASRCommand
 
 AUDIO_DIR = os.path.join(os.path.dirname(__file__), 'audio')
