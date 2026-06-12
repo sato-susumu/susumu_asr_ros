@@ -136,8 +136,10 @@ class SpeechRecognitionSystem:
                 vad_result = self.vad_plugin.process_frame(frame)
                 self._handle_vad(vad_result, frame)
                 self._update_current_time(frame)
-                if not isinstance(self.recorder, WavAudioRecorder):
-                    time.sleep(0.03)
+                # マイクモードでは read_frame() のブロッキングが実時間の
+                # ペーシングを担う。ここで sleep すると1ループが1フレーム
+                # 時間（32ms）を超え、入力バッファに音声が滞留し続けて
+                # 表示・認識の遅延が際限なく成長する
 
         except KeyboardInterrupt:
             pass

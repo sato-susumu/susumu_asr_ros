@@ -203,6 +203,19 @@ class SusumuAsrNode(Node):
     def _on_audio_frame(self, frame: bytes):
         if not rclpy.ok():
             return
+        # 取得ドリフト計測: 壁時計の経過時間と発行した音声の長さの差。
+        # 読み出しループが実時間より遅いと差が増え続け、入力バッファに
+        # 音声が滞留している（=表示・認識が遅れる）ことを意味する
+        now = time.time()
+        if not hasattr(self, '_drift_t0'):
+            self._drift_t0 = now
+            self._drift_audio_sec = 0.0
+            self._drift_last_log = now
+        self._drift_audio_sec += len(frame) / 2 / 16000.0
+        if now - self._drift_last_log >= 5.0:
+            drift = (now - self._drift_t0) - self._drift_audio_sec
+            self.get_logger().info(f'[audio-drift] 取得遅れ {drift * 1000:.0f}ms')
+            self._drift_last_log = now
         samples = np.frombuffer(frame, dtype=np.int16).tolist()
         msg = Int16MultiArray()
         msg.data = samples
