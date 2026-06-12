@@ -68,6 +68,8 @@ class SileroVADPlugin(VADPluginBase):
     def setup(self) -> None:
         """モデルをロードして内部状態を初期化する."""
         self.logger = get_logger('silero_vad')
+        torch.set_num_threads(1)
+        self._torch_threads_set = False
         self.logger.info('Torch Hub からモデルをロードします...')
         model, utils = torch.hub.load(
             repo_or_dir='snakers4/silero-vad:v4.0',
@@ -95,6 +97,15 @@ class SileroVADPlugin(VADPluginBase):
 
     def process_frame(self, frame: bytes) -> VADResult:
         """1フレームを処理して VADResult を返す."""
+        if not self._torch_threads_set:
+            # Silero は 512 サンプルの極小推論を 32ms ごとに繰り返すため、
+            # デフォルトの OpenMP プールではワーカーが推論の合間に
+            # スピンウェイトし続け CPU を浪費する（実測 956%→14%）。
+            # OpenMP のスレッド数設定は呼び出したスレッドにしか効かない
+            # ので、setup()（メインスレッド）ではなく推論スレッド自身で
+            # 設定する必要がある
+            torch.set_num_threads(1)
+            self._torch_threads_set = True
         self._pre_speech_buffer.append(frame)
         audio_float32 = torch.from_numpy(
             np.frombuffer(frame, dtype=np.int16).copy()
